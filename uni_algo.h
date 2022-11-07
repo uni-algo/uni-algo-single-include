@@ -10,6 +10,7 @@
 #include <type_traits>
 #include <cstddef>
 
+#define UNI_ALGO_STATIC_DATA
 #define UNI_ALGO_DISABLE_SYSTEM_LOCALE
 
 // AMALGAMATION: uni_algo/impl/impl_cpp_lib_version.h
@@ -18,7 +19,7 @@
 // (VERSION % 1000) is the patch version 0..255,
 // (VERSION / 1000 % 1000) is the minor version 0..255,
 // (VERSION / 1000000) is the major version 0..255.
-#define UNI_ALGO_CPP_LIB_VERSION 5000
+#define UNI_ALGO_CPP_LIB_VERSION 6000
 
 // AMALGAMATION: uni_algo/impl/impl_unicode_version.h
 
@@ -49,49 +50,55 @@
 // Note that you can just add the following defines to your project
 // instead of uncommenting the defines here.
 
+//#define UNI_ALGO_DISABLE_CASE
 // Disable Case module.
 // Reduces the size of the library by ~200 KB.
-//#define UNI_ALGO_DISABLE_CASE
 
+//#define UNI_ALGO_DISABLE_NORM
 // Disable Normalization module.
 // Reduces the size of the library by ~300 KB.
-//#define UNI_ALGO_DISABLE_NORM
 
+//#define UNI_ALGO_DISABLE_PROP
 // Disable Code Point Properties module.
 // Reduces the size of the library by ~35 KB.
 // Note that if this module is disabled unaccent functions
 // in Normalization module will be disabled too.
-//#define UNI_ALGO_DISABLE_PROP
 
+//#define UNI_ALGO_DISABLE_BREAK_GRAPHEME
 // Disable Break Grapheme module.
 // Reduces the size of the library by ~25 KB.
-//#define UNI_ALGO_DISABLE_BREAK_GRAPHEME
 
+//#define UNI_ALGO_DISABLE_BREAK_WORD
 // Disable Break Word module.
 // Reduces the size of the library by ~35 KB.
 // Note that if Break Word module is disabled title case functions
 // in Case module will be disabled too because it is needed for them.
-//#define UNI_ALGO_DISABLE_BREAK_WORD
 
+//#define UNI_ALGO_DISABLE_COLLATE
 // Disable collation functions (part of Case module).
 // Reduces the size of Case module by ~100 KB.
-//#define UNI_ALGO_DISABLE_COLLATE
 
+//#define UNI_ALGO_DISABLE_NFKC_NFKD
 // Disable NFKC and NFKD normalization forms (part of Normalization module).
 // These forms are rarely used and can be disabled.
 // Reduces the size of Normalization module by ~100 KB.
-//#define UNI_ALGO_DISABLE_NFKC_NFKD
 
-// Disable system locale facilities: uni::locale::system() function etc.
 //#define UNI_ALGO_DISABLE_SYSTEM_LOCALE
+// Disable system locale facilities: uni::locale::system() function etc.
 
+//#define UNI_ALGO_DISABLE_SHRINK_TO_FIT
+// Most of functions do shrink_to_fit() call at the of a function by default
+// but if you use a custom allocator or want to maximize the performance
+// it might be better to disable it and do the call manually only when needed.
+
+//#define UNI_ALGO_DISABLE_CPP_ITERATORS
 // With this define pointers will be used instead of C++ iterators internally.
 // The only reason to use the define is to maximize performance in debug builds,
 // for example MSVC debug iterators are very slow.
 // Note that the define only affects some functions.
 // The define does not affect behaviour.
-//#define UNI_ALGO_DISABLE_CPP_ITERATORS
 
+//#define UNI_ALGO_DISABLE_FULL_CASE
 // Note that this define can be deprecated in the future.
 // Disable full case mapping and use simple case mapping instead.
 // The define is only usefull if you need compatibility with legacy implementations
@@ -101,13 +108,21 @@
 // will be using the library with languages that don't need full case mapping.
 // In other words the define must be avoided at all cost.
 // The define affects only Case module.
-// The define is used for some internal tests.
-//#define UNI_ALGO_DISABLE_FULL_CASE
+
+//#define UNI_ALGO_STATIC_DATA
+// Note that with CMake use UNI_ALGO_HEADER_ONLY=ON option instead.
+// The define can be used to build header-only version of the library.
+
+//#define UNI_ALGO_DLL_EXPORT
+//#define UNI_ALGO_DLL_IMPORT
+// Note that with CMake use BUILD_SHARED_LIBS=ON option instead.
+// The defines can be used to build shared library
+// export must be defined when building and import when using.
 
 // DO NOT CHANGE ANYTHING BELOW THIS LINE
 
 #if (__cplusplus < 201703L && !defined(_MSVC_LANG)) || (defined(_MSVC_LANG) && _MSVC_LANG < 201703L)
-#  error "C++17 or better is required"
+#error "C++17 or better is required"
 #endif
 
 // All the comments below are not for users of the library
@@ -136,6 +151,24 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 // Define namespace that low-level will use
 #define UNI_ALGO_IMPL_NAMESPACE_BEGIN namespace uni::detail {
 #define UNI_ALGO_IMPL_NAMESPACE_END }
+
+// Define dllexport/dllimport for shared library
+#if defined(UNI_ALGO_DLL_EXPORT) && !defined(UNI_ALGO_STATIC_DATA)
+#  if defined(_WIN32)
+#    define UNI_ALGO_DLL __declspec(dllexport)
+#  elif defined(__GNUC__) || defined(__clang__)
+#    define UNI_ALGO_DLL __attribute__((visibility("default")))
+#  endif
+#elif defined(UNI_ALGO_DLL_IMPORT) && !defined(UNI_ALGO_STATIC_DATA)
+#  if defined(_WIN32)
+#    define UNI_ALGO_DLL __declspec(dllimport)
+#  elif defined(__GNUC__) || defined(__clang__)
+#    define UNI_ALGO_DLL __attribute__((visibility("default")))
+#  endif
+#endif
+#ifndef UNI_ALGO_DLL
+#define UNI_ALGO_DLL
+#endif
 
 // TODO: Disable constexpr for now it doesn't work properly in some cases
 #define uaiw_constexpr //constexpr
@@ -271,11 +304,9 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 #  endif
 #endif
 
-// AMALGAMATION: uni_algo/impl/impl_case_data.h
+// AMALGAMATION: uni_algo/impl/data/data_case.h
 
 // Unicode 15.0.0
-
-//!#include "internal_defines.h"
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
@@ -18715,13 +18746,9 @@ uaix_const_data unsigned short stage3_special_lower[][4] = {
 
 UNI_ALGO_IMPL_NAMESPACE_END
 
-//!#include "internal_undefs.h"
-
-// AMALGAMATION: uni_algo/impl/impl_norm_data.h
+// AMALGAMATION: uni_algo/impl/data/data_norm.h
 
 // Unicode 15.0.0
-
-//!#include "internal_defines.h"
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
@@ -33523,13 +33550,9 @@ uaix_const_data type_codept stage3_comp[][64] = {
 
 UNI_ALGO_IMPL_NAMESPACE_END
 
-//!#include "internal_undefs.h"
-
-// AMALGAMATION: uni_algo/impl/impl_prop_data.h
+// AMALGAMATION: uni_algo/impl/data/data_prop.h
 
 // Unicode 15.0.0
-
-//!#include "internal_defines.h"
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
@@ -38962,13 +38985,9 @@ uaix_const_data unsigned char stage2_prop[] = {
 
 UNI_ALGO_IMPL_NAMESPACE_END
 
-//!#include "internal_undefs.h"
-
-// AMALGAMATION: uni_algo/impl/impl_break_grapheme_data.h
+// AMALGAMATION: uni_algo/impl/data/data_break_grapheme.h
 
 // Unicode 15.0.0
-
-//!#include "internal_defines.h"
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
@@ -42650,13 +42669,9 @@ uaix_const_data unsigned char stage2_break_grapheme[] = {
 
 UNI_ALGO_IMPL_NAMESPACE_END
 
-//!#include "internal_undefs.h"
-
-// AMALGAMATION: uni_algo/impl/impl_break_word_data.h
+// AMALGAMATION: uni_algo/impl/data/data_break_word.h
 
 // Unicode 15.0.0
-
-//!#include "internal_defines.h"
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
@@ -47613,8 +47628,6 @@ uaix_const_data unsigned char stage2_break_word[] = {
 
 UNI_ALGO_IMPL_NAMESPACE_END
 
-//!#include "internal_undefs.h"
-
 // AMALGAMATION: uni_algo/impl/internal_stages.h
 
 
@@ -47651,7 +47664,7 @@ uaix_static type_codept stages(type_codept c, T1 stage1, T2 stage2)
 UNI_ALGO_IMPL_NAMESPACE_END
 
 
-// AMALGAMATION: uni_algo/impl/impl_iterator.h
+// AMALGAMATION: uni_algo/impl/impl_iter.h
 
 
 //!#include "internal_defines.h"
@@ -47670,7 +47683,7 @@ uaix_static it_in_utf8 iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept
     // If first >= last the behaviour is undefined
     // C++ Note: works with iterators: input, forward, bidirectional, random access, contiguous
 
-    // See impl_utf8to16 in impl_convert.h for details
+    // See impl_utf8to16 in impl_conv.h for details
 
     it_in_utf8 s = first;
 
@@ -48041,7 +48054,7 @@ UNI_ALGO_IMPL_NAMESPACE_END
 //!#include "internal_undefs.h"
 
 
-// AMALGAMATION: uni_algo/impl/impl_convert.h
+// AMALGAMATION: uni_algo/impl/impl_conv.h
 
 
 //!#include "internal_defines.h"
@@ -48087,7 +48100,7 @@ uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf1
      * Also I tried to implement it a bit different but it seems a compiler can optimize
      * it better when it written like that even though it looks a bit ugly.
      * Note that we don't use iterator functions here and inline everything because
-     * it gives a better performance. See test/test_perf_iter_convert.h
+     * it gives a better performance. See test/test_perf_iter_conv.h
      */
 
     it_in_utf8 s = first;
@@ -48600,6 +48613,214 @@ uaix_static size_t impl_utf32to16(it_in_utf32 first, it_end_utf32 last, it_out_u
     return (size_t)(dst - result);
 }
 
+#ifdef __cplusplus
+template<typename it_in_utf8, typename it_end_utf8>
+#endif
+uaix_static bool impl_is_valid_utf8(it_in_utf8 first, it_end_utf8 last, size_t* error)
+{
+    // Based on impl_utf8to16 function
+
+    it_in_utf8 s = first;
+    it_in_utf8 prev = s;
+
+    while (s != last)
+    {
+        type_codept c = (*s & 0xFF), c2, c3, c4;
+        prev = s; // Save previous position for error
+
+        if (uaix_likely(c <= 0x7F)) // Fast route for ASCII
+        {
+            ++s;
+            continue;
+        }
+        else if (c >= 0xC2 && c <= 0xDF)
+        {
+            if (++s != last && ((c2 = (*s & 0xFF)) >= 0x80 && c2 <= 0xBF))
+            {
+                ++s;
+                continue;
+            }
+        }
+        else if (c >= 0xE1 && c <= 0xEC)
+        { // NOLINT(bugprone-branch-clone)
+            if (++s != last && ((c2 = (*s & 0xFF)) >= 0x80 && c2 <= 0xBF) &&
+                ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF))
+            {
+                ++s;
+                continue;
+            }
+        }
+        else if (c >= 0xEE && c <= 0xEF)
+        { // NOLINT(bugprone-branch-clone)
+            if (++s != last && ((c2 = (*s & 0xFF)) >= 0x80 && c2 <= 0xBF) &&
+                ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF))
+            {
+                ++s;
+                continue;
+            }
+        }
+        else if (c == 0xE0)
+        {
+            if (++s != last && ((c2 = (*s & 0xFF)) >= 0xA0 && c2 <= 0xBF) &&
+                ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF))
+            {
+                ++s;
+                continue;
+            }
+        }
+        else if (c == 0xED)
+        {
+            if (++s != last && ((c2 = (*s & 0xFF)) >= 0x80 && c2 <= 0x9F) &&
+                ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF))
+            {
+                ++s;
+                continue;
+            }
+        }
+        else if (c == 0xF0)
+        {
+            if (++s != last && ((c2 = (*s & 0xFF)) >= 0x90 && c2 <= 0xBF) &&
+                ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF) &&
+                ++s != last && ((c4 = (*s & 0xFF)) >= 0x80 && c4 <= 0xBF))
+            {
+                ++s;
+                continue;
+            }
+        }
+        else if (c == 0xF4)
+        {
+            if (++s != last && ((c2 = (*s & 0xFF)) >= 0x80 && c2 <= 0x8F) &&
+                ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF) &&
+                ++s != last && ((c4 = (*s & 0xFF)) >= 0x80 && c4 <= 0xBF))
+            {
+                ++s;
+                continue;
+            }
+        }
+        else if (c >= 0xF1 && c <= 0xF3)
+        {
+            if (++s != last && ((c2 = (*s & 0xFF)) >= 0x80 && c2 <= 0xBF) &&
+                ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF) &&
+                ++s != last && ((c4 = (*s & 0xFF)) >= 0x80 && c4 <= 0xBF))
+            {
+                ++s;
+                continue;
+            }
+        }
+        else
+        {
+            // invalid code unit
+            ++s;
+        }
+
+        // Error: invalid code unit or overlong code point or truncated sequence in UTF-8
+
+        if (error) // *error points to the start of ill-formed sequence
+            *error = (size_t)(prev - first);
+
+        return false;
+    }
+
+    return true;
+}
+
+#ifdef __cplusplus
+template<typename it_in_utf16, typename it_end_utf16>
+#endif
+uaix_static bool impl_is_valid_utf16(it_in_utf16 first, it_end_utf16 last, size_t* error)
+{
+    // Based on impl_utf16to8 function
+
+    it_in_utf16 src = first;
+
+    while (src != last)
+    {
+        type_codept h = (*src++ & 0xFFFF);
+
+        if (h <= 0x7F)
+        { // NOLINT(bugprone-branch-clone)
+            continue;
+        }
+        else if (h <= 0x7FF)
+        { // NOLINT(bugprone-branch-clone)
+            continue;
+        }
+        else if (h >= 0xD800 && h <= 0xDFFF) // Surrogate pair
+        {
+            if (/*h >= 0xD800 &&*/ h <= 0xDBFF) // High surrogate is in range
+            {
+                if (src != last) // Unpaired high surrogate if reached the end here
+                {
+                    type_codept l = (*src & 0xFFFF);
+
+                    if (l >= 0xDC00 && l <= 0xDFFF) // Low surrogate is in range
+                    {
+                        src++;
+                        continue;
+                    }
+                }
+            }
+        }
+        else
+        { // NOLINT(bugprone-branch-clone)
+            continue;
+        }
+
+        // Error: lone low surrogate or broken surrogate pair in UTF-16
+
+        if (error) // *error points to the start of ill-formed sequence
+            *error = (size_t)(src - first) - 1;
+
+        return false;
+    }
+
+    return true;
+}
+
+#ifdef __cplusplus
+template<typename it_in_utf32, typename it_end_utf32>
+#endif
+uaix_static bool impl_is_valid_utf32(it_in_utf32 first, it_end_utf32 last, size_t* error)
+{
+    // Based on impl_utf32to8 function
+
+    it_in_utf32 src = first;
+
+    while (src != last)
+    {
+        type_codept c = ((type_codept)*src++ & 0xFFFFFFFF);
+
+        if (c <= 0x7F)
+        { // NOLINT(bugprone-branch-clone)
+            continue;
+        }
+        else if (c <= 0x7FF)
+        { // NOLINT(bugprone-branch-clone)
+            continue;
+        }
+        else if (c <= 0xFFFF)
+        {
+            if (!(c >= 0xD800 && c <= 0xDFFF)) // If not in surrogate pairs range
+            {
+                continue;
+            }
+        }
+        else if (c <= 0x10FFFF)
+        { // NOLINT(bugprone-branch-clone)
+            continue;
+        }
+
+        // Error: code point > 0x10FFFF or surrogate in UTF-32
+
+        if (error) // *error points to invalid code point
+            *error = (size_t)(src - first) - 1;
+
+        return false;
+    }
+
+    return true;
+}
+
 UNI_ALGO_IMPL_NAMESPACE_END
 
 //!#include "internal_undefs.h"
@@ -48608,13 +48829,15 @@ UNI_ALGO_IMPL_NAMESPACE_END
 // AMALGAMATION: uni_algo/impl/impl_break_grapheme.h
 
 
-//!#include "impl_iterator.h"
+//!#include "impl_iter.h"
 
 //!#include "internal_defines.h"
 //!#include "internal_stages.h"
 
 #ifndef UNI_ALGO_STATIC_DATA
-//!#include "impl_break_grapheme_data_extern.h"
+//!#include "data/extern_break_grapheme.h"
+#else
+//!#include "data/data_break_grapheme.h"
 #endif
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
@@ -49017,13 +49240,15 @@ UNI_ALGO_IMPL_NAMESPACE_END
 // AMALGAMATION: uni_algo/impl/impl_break_word.h
 
 
-//!#include "impl_iterator.h"
+//!#include "impl_iter.h"
 
 //!#include "internal_defines.h"
 //!#include "internal_stages.h"
 
 #ifndef UNI_ALGO_STATIC_DATA
-//!#include "impl_break_word_data_extern.h"
+//!#include "data/extern_break_word.h"
+#else
+//!#include "data/data_break_word.h"
 #endif
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
@@ -49193,12 +49418,12 @@ template<typename it_in_utf8, typename it_end_utf8>
 uaix_static type_codept break_word_skip_utf8(it_in_utf8 first, it_end_utf8 last)
 {
     /* C++ Note: this function makes the word segmentation algorithm incompatible with input iterators.
-     * This means Word Boundary Rules are not compatible with streams at all.
+     * This means Word Boundary Rules are not compatible with streams at all and require at least forward iterator.
      * It can even look like it works but it never pass tests because we must go back after this function.
      * The test line where it fails: "\x0061\x003A\x0001" - AHLetter + MidLetter + Other.
      * Must be 3 words but if we don't go back it will be 2. */
 
-    it_in_utf8 src = first + 0; // Make it compile only for contiguous or random access iterator for now
+    it_in_utf8 src = first;
     type_codept c = 0;
 
     while (src != last)
@@ -49591,7 +49816,7 @@ template<typename it_in_utf16, typename it_end_utf16>
 #endif
 uaix_static type_codept break_word_skip_utf16(it_in_utf16 first, it_end_utf16 last)
 {
-    it_in_utf16 src = first + 0; // Make it compile only for contiguous or random access iterator for now
+    it_in_utf16 src = first;
     type_codept c = 0;
 
     while (src != last)
@@ -49973,7 +50198,7 @@ UNI_ALGO_IMPL_NAMESPACE_END
 // AMALGAMATION: uni_algo/impl/impl_case.h
 
 
-//!#include "impl_iterator.h"
+//!#include "impl_iter.h"
 // Note that title case has cross dependency with break word module
 // and if it's disabled all title case functions must be disabled too
 #ifndef UNI_ALGO_DISABLE_BREAK_WORD
@@ -49984,7 +50209,9 @@ UNI_ALGO_IMPL_NAMESPACE_END
 //!#include "internal_stages.h"
 
 #ifndef UNI_ALGO_STATIC_DATA
-//!#include "impl_case_data_extern.h"
+//!#include "data/extern_case.h"
+#else
+//!#include "data/data_case.h"
 #endif
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
@@ -53414,7 +53641,9 @@ UNI_ALGO_IMPL_NAMESPACE_END
 //!#include "internal_stages.h"
 
 #ifndef UNI_ALGO_STATIC_DATA
-//!#include "impl_prop_data_extern.h"
+//!#include "data/extern_prop.h"
+#else
+//!#include "data/data_prop.h"
 #endif
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
@@ -53717,7 +53946,7 @@ UNI_ALGO_IMPL_NAMESPACE_END
 // AMALGAMATION: uni_algo/impl/impl_norm.h
 
 
-//!#include "impl_iterator.h"
+//!#include "impl_iter.h"
 
 #ifndef UNI_ALGO_DISABLE_PROP
 //!#include "impl_prop.h"
@@ -53727,7 +53956,9 @@ UNI_ALGO_IMPL_NAMESPACE_END
 //!#include "internal_stages.h"
 
 #ifndef UNI_ALGO_STATIC_DATA
-//!#include "impl_norm_data_extern.h"
+//!#include "data/extern_norm.h"
+#else
+//!#include "data/data_norm.h"
 #endif
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
@@ -56279,7 +56510,7 @@ namespace uni {
 struct sentinel_t {};
 inline constexpr sentinel_t sentinel;
 
-namespace detail::ranges {
+namespace detail::rng {
 
 // We need to use public std::ranges::view_base for compatibility with std::ranges
 // when a std::view on the right side of operator|
@@ -56334,21 +56565,36 @@ using iter_tag = typename std::conditional_t<std::bidirectional_iterator<Iter>,
 //    std::forward_iterator_tag, std::input_iterator_tag>>>;
 #endif
 
-// Use sa_* types only for static_assert
+// "has_member" helpers that are mostly used to disable/enable functions
+
+template <typename T, typename = void>
+struct has_member_begin : std::false_type {};
+template <typename T>
+struct has_member_begin<T, std::void_t<decltype(std::begin(std::declval<T&>()))>> : std::true_type {};
+
+template <typename T, typename = void>
+struct has_member_allocate : std::false_type {};
+template <typename T>
+struct has_member_allocate<T, std::void_t<decltype(std::declval<T&>().allocate(0))>> : std::true_type {};
+
+template <typename T, typename = void>
+struct has_member_data : std::false_type {};
+template <typename T>
+struct has_member_data<T, std::void_t<decltype(std::data(std::declval<T&>()))>> : std::true_type {};
+
+// "is" helpers
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
 template<class Iter>
-using sa_iter_bidi_or_better = std::conditional_t<
+using is_iter_bidi_or_better = std::conditional_t<
     std::is_convertible_v<typename std::iterator_traits<Iter>::iterator_category, std::bidirectional_iterator_tag>,
     std::true_type, std::false_type>;
-template<class Iter>
-using sa_iter_contiguous = std::conditional_t<
-    std::is_convertible_v<typename std::iterator_traits<Iter>::iterator_category, std::random_access_iterator_tag>,
-    std::true_type, std::false_type>;
+template<class Range>
+using is_range_contiguous = std::conditional_t<has_member_data<Range>::value, std::true_type, std::false_type>;
 #else
 template<class Iter>
-using sa_iter_bidi_or_better = std::conditional_t<std::bidirectional_iterator<Iter>, std::true_type, std::false_type>;
-template<class Iter>
-using sa_iter_contiguous = std::conditional_t<std::contiguous_iterator<Iter>, std::true_type, std::false_type>;
+using is_iter_bidi_or_better = std::conditional_t<std::bidirectional_iterator<Iter>, std::true_type, std::false_type>;
+template<class Range>
+using is_range_contiguous = std::conditional_t<std::ranges::contiguous_range<Range>, std::true_type, std::false_type>;
 #endif
 
 // In C++17 std::string_view doesn't have iterators pair constructor
@@ -56368,7 +56614,7 @@ StringViewResult to_string_view(const Range&, Iter it_begin, Iter it_pos)
 }
 #endif
 
-} // namespace detail::ranges
+} // namespace detail::rng
 
 namespace ranges {
 
@@ -56376,7 +56622,7 @@ namespace ranges {
 // It has the similar design as std::views::ref_view so in C++20 we just use that
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
 template<class Range>
-class ref_view : public detail::ranges::view_base
+class ref_view : public detail::rng::view_base
 {
 private:
     Range* range = nullptr;
@@ -56387,19 +56633,9 @@ public:
     //uaiw_constexpr Range& base() const { return *range; }
     uaiw_constexpr auto begin() const { return std::begin(*range); }
     uaiw_constexpr auto end() const { return std::end(*range); }
-    //template<class = std::enable_if_t<sfinae_has_data<Range>::value>>
+    template<class T = void, class = std::enable_if_t<detail::rng::has_member_data<Range>::value, T>>
     uaiw_constexpr auto data() const { return std::data(*range); }
 };
-// TODO: Test more
-// data() should work (it won't compile if Range doesn't have data())
-// even without this SFINAE crap but if it won't then try it
-//template <typename T, typename = void>
-//struct sfinae_has_data : std::false_type {};
-//template <typename T>
-//struct sfinae_has_data<T, decltype(void(std::data(std::declval<T&>())))> : std::true_type {};
-// second ver:
-//template <typename T>
-//struct sfinae_has_data<T, decltype(void(std::declval<T&>().data()))> : std::true_type {};
 #else
 template<class R>
 using ref_view = std::ranges::ref_view<R>;
@@ -56415,7 +56651,7 @@ using ref_view = std::ranges::ref_view<R>;
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
 // https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2021/p2415r2.html
 template<class Range>
-class owning_view : public detail::ranges::view_base
+class owning_view : public detail::rng::view_base
 {
 private:
     Range range = Range{};
@@ -56436,7 +56672,9 @@ public:
     uaiw_constexpr auto end() { return std::end(range); }
     //uaiw_constexpr auto begin() const { return ranges::begin(range); }
     //uaiw_constexpr auto end() const { return ranges::end(range); }
+    template<class T = void, class = std::enable_if_t<detail::rng::has_member_data<Range>::value, T>>
     uaiw_constexpr auto data() { return std::data(range); }
+    template<class T = void, class = std::enable_if_t<detail::rng::has_member_data<Range>::value, T>>
     uaiw_constexpr auto data() const { return std::data(range); }
 };
 #else
@@ -56447,7 +56685,7 @@ using owning_view = std::ranges::owning_view<R>;
 
 } // namespace ranges
 
-namespace detail {
+namespace detail::rng {
 
 // For C++17 we implement very simply view adaptors that support operator|
 // The design is based on this article:
@@ -56479,7 +56717,7 @@ struct adaptor_all
         // and for rvalues we use owning_view as a proxy
         // this is the similar design as std::ranges
 
-        using range_v = detail::ranges::range_value_t<R>;
+        using range_v = detail::rng::range_value_t<R>;
 
         // Check if the range is our range or std::ranges::view
         // Note that the better check in C++20 will look like this:
@@ -56487,14 +56725,14 @@ struct adaptor_all
         // but in C++20 it is just better to use all view/ref_view/owning_view provided by the standard library
         // std::decay_t is important here to handle some corner cases properly
         // see: test/test_ranges.h -> test_ranges_static_assert()
-        if constexpr (std::is_base_of_v<detail::ranges::view_base, std::decay_t<R>> ||
+        if constexpr (std::is_base_of_v<detail::rng::view_base, std::decay_t<R>> ||
                 //std::is_base_of_v<std::ranges::view_interface<std::decay_t<R>>, std::decay_t<R>> || // view_interface check
                 std::is_same_v<std::basic_string_view<range_v>, std::decay_t<R>>)
             return std::forward<R>(r);
         else if constexpr (std::is_lvalue_reference_v<R>)
-            return uni::ranges::ref_view{std::forward<R>(r)};
+            return ranges::ref_view{std::forward<R>(r)};
         else
-            return uni::ranges::owning_view{std::forward<R>(r)};
+            return ranges::owning_view{std::forward<R>(r)};
 
         // view_interface check is needed because std::ranges::view_interface in not derived from std::view_base anymore
         // https://cplusplus.github.io/LWG/issue3549
@@ -56505,14 +56743,14 @@ template <class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_all& a) { return a(std::forward<R>(r)); }
 #endif
 
-} // namespase detail
+} // namespase detail::rng
 
 namespace ranges::views {
 
 // In C++17 use our simple all view that uses our simple ref_view/owning_view
 // In C++20 use facilities provided by the standard library
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
-inline constexpr detail::adaptor_all all;
+inline constexpr detail::rng::adaptor_all all;
 template<class Range>
 using all_t = decltype(all(std::declval<Range>()));
 #else
@@ -56748,20 +56986,20 @@ public:
 
 } // namespace detail::translit
 
-namespace detail::ranges {
+namespace detail::rng {
 
 // See ext/translit/macedonian_to_latin_docs.h for an example how to use it.
 
 template<class Range, class Func>
-class translit_view : public detail::ranges::view_base
+class translit_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class translit
     {
         // Translit view is internal so skip static assert. For a reference it looks like this:
-        //static_assert(std::is_integral_v<detail::ranges::iter_value_t<Iter>> &&
-        //              sizeof(detail::ranges::iter_value_t<Iter>) >= sizeof(char32_t),
+        //static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+        //              sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
         //              "translit view requires char32_t range");
 
     private:
@@ -56802,7 +57040,7 @@ private:
         using value_type        = char32_t;
         using pointer           = void;
         using reference         = char32_t;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         uaiw_constexpr translit() = default;
         uaiw_constexpr explicit translit(translit_view& p, Iter begin, Sent)
@@ -56831,8 +57069,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const translit& x) { return !x.stream_end; }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     Func func_translit;
@@ -56863,9 +57101,9 @@ public:
 };
 
 template<class Range, class Func>
-translit_view(Range&&, Func, std::size_t) -> translit_view<uni::views::all_t<Range>, Func>;
+translit_view(Range&&, Func, std::size_t) -> translit_view<views::all_t<Range>, Func>;
 
-} // namespace detail::ranges
+} // namespace detail::rng
 
 } // namespace uni
 
@@ -56882,20 +57120,20 @@ translit_view(Range&&, Func, std::size_t) -> translit_view<uni::views::all_t<Ran
 //!#include "version.h"
 //!#include "internal/ranges_core.h"
 
-//!#include "impl/impl_iterator.h"
+//!#include "impl/impl_iter.h"
 
 namespace uni {
 
 namespace ranges {
 
 template<class Range, char32_t Error = detail::impl_iter_replacement>
-class utf8_view : public detail::ranges::view_base
+class utf8_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class utf8
     {
-        static_assert(std::is_integral_v<detail::ranges::iter_value_t<Iter>>,
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>>,
                       "utf8 view requires integral UTF-8 range");
 
         // Error is only used for tests, do not document it
@@ -56907,7 +57145,7 @@ private:
         Iter it_next;
         detail::type_codept codepoint = 0;
 
-        using iter_tag = detail::ranges::iter_tag<Iter>;
+        using iter_tag = detail::rng::iter_tag<Iter>;
 
         using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
         using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
@@ -56919,7 +57157,7 @@ private:
         using value_type        = char32_t;
         using pointer           = void;
         using reference         = char32_t;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         uaiw_constexpr utf8() = default;
         uaiw_constexpr explicit utf8(utf8_view& p, Iter begin, Sent end)
@@ -56980,8 +57218,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     utf8<iter_t, sent_t> cached_begin_value;
@@ -57014,14 +57252,14 @@ public:
 };
 
 template<class Range, char32_t Error = detail::impl_iter_replacement>
-class utf16_view : public detail::ranges::view_base
+class utf16_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class utf16
     {
-        static_assert(std::is_integral_v<detail::ranges::iter_value_t<Iter>> &&
-                      sizeof(detail::ranges::iter_value_t<Iter>) >= sizeof(char16_t),
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char16_t),
                       "utf16 view requires integral UTF-16 range");
 
         // Error is only used for tests, do not document it
@@ -57033,7 +57271,7 @@ private:
         Iter it_next;
         detail::type_codept codepoint = 0;
 
-        using iter_tag = detail::ranges::iter_tag<Iter>;
+        using iter_tag = detail::rng::iter_tag<Iter>;
 
         using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
         using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
@@ -57045,7 +57283,7 @@ private:
         using value_type        = char32_t;
         using pointer           = void;
         using reference         = char32_t;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         uaiw_constexpr utf16() = default;
         uaiw_constexpr explicit utf16(utf16_view& p, Iter begin, Sent end)
@@ -57106,8 +57344,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     utf16<iter_t, sent_t> cached_begin_value;
@@ -57140,7 +57378,7 @@ public:
 };
 
 template<class Range>
-class reverse_view : public detail::ranges::view_base
+class reverse_view : public detail::rng::view_base
 {
     // There is a problem with std::views::reverse it is implemented using
     // std::reverse_iterator and operator* looks like this { Iterator tmp = current; return *--tmp; }
@@ -57153,7 +57391,7 @@ private:
     template<class Iter, class Sent>
     class reverse
     {
-        static_assert(detail::ranges::sa_iter_bidi_or_better<Iter>::value,
+        static_assert(detail::rng::is_iter_bidi_or_better<Iter>::value,
                       "reverse view requires bidirectional or better range");
 
     private:
@@ -57163,10 +57401,10 @@ private:
 
     public:
         using iterator_category = std::bidirectional_iterator_tag;
-        using value_type        = detail::ranges::iter_value_t<Iter>;
-        using pointer           = detail::ranges::iter_pointer_t<Iter>;
-        using reference         = detail::ranges::iter_reference_t<Iter>;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using value_type        = detail::rng::iter_value_t<Iter>;
+        using pointer           = detail::rng::iter_pointer_t<Iter>;
+        using reference         = detail::rng::iter_reference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         uaiw_constexpr reverse() = default;
         uaiw_constexpr explicit reverse(reverse_view& p, Iter begin, Sent end)
@@ -57230,8 +57468,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const reverse& x) { return !x.past_begin; }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     reverse<iter_t, iter_t> cached_begin_value;
@@ -57274,7 +57512,7 @@ public:
 };
 
 template<class Range, class Pred>
-class filter_view : public detail::ranges::view_base
+class filter_view : public detail::rng::view_base
 {
     // Our filter view is almost the same as std::views::filter
     // so the performance should be the same
@@ -57286,7 +57524,7 @@ private:
         filter_view* parent = nullptr;
         Iter it_pos;
 
-        using iter_tag = detail::ranges::iter_tag<Iter>;
+        using iter_tag = detail::rng::iter_tag<Iter>;
 
         using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
         using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
@@ -57295,10 +57533,10 @@ private:
         using iterator_category = std::conditional_t<is_bidirectional_or_better::value,
             std::bidirectional_iterator_tag, std::conditional_t<is_forward_or_better::value,
             std::forward_iterator_tag, std::input_iterator_tag>>;
-        using value_type        = detail::ranges::iter_value_t<Iter>;
-        using pointer           = detail::ranges::iter_pointer_t<Iter>;
-        using reference         = detail::ranges::iter_reference_t<Iter>;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using value_type        = detail::rng::iter_value_t<Iter>;
+        using pointer           = detail::rng::iter_pointer_t<Iter>;
+        using reference         = detail::rng::iter_reference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         uaiw_constexpr filter() = default;
         uaiw_constexpr explicit filter(filter_view& p, Iter begin, Sent end)
@@ -57353,8 +57591,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const filter& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     Pred func_filter;
@@ -57387,7 +57625,7 @@ public:
 };
 
 template<class Range, class Func>
-class transform_view : public detail::ranges::view_base
+class transform_view : public detail::rng::view_base
 {
     // Our transform_view view is always bidirectional or worse so there are no optimizations
     // if Range is random access because we expect utf8_view/utf16_view before this view.
@@ -57400,7 +57638,7 @@ private:
         transform_view* parent = nullptr;
         Iter it_pos;
 
-        using iter_tag = detail::ranges::iter_tag<Iter>;
+        using iter_tag = detail::rng::iter_tag<Iter>;
 
         using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
         using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
@@ -57411,10 +57649,10 @@ private:
             std::forward_iterator_tag, std::input_iterator_tag>>;
         //using value_type        = std::remove_cvref_t<std::invoke_result_t<Func&, typename std::iterator_traits<Iter>::reference>>;
         using value_type        = std::remove_cv_t<std::remove_reference_t<
-            std::invoke_result_t<Func&, detail::ranges::iter_reference_t<Iter>>>>;
+            std::invoke_result_t<Func&, detail::rng::iter_reference_t<Iter>>>>;
         using pointer           = void;
         using reference         = value_type;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         uaiw_constexpr transform() = default;
         uaiw_constexpr explicit transform(transform_view& p, Iter begin, Sent)
@@ -57463,8 +57701,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const transform& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     Func func_transform;
@@ -57488,7 +57726,7 @@ public:
 };
 
 template<class Range>
-class take_view : public detail::ranges::view_base
+class take_view : public detail::rng::view_base
 {
     // Our take view is always bidirectional or worse so there are no optimizations
     // if Range is random access because we expect utf8_view/utf16_view before this view.
@@ -57503,7 +57741,7 @@ private:
         Iter it_pos;
         std::size_t count = 0;
 
-        using iter_tag = detail::ranges::iter_tag<Iter>;
+        using iter_tag = detail::rng::iter_tag<Iter>;
 
         using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
         using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
@@ -57512,10 +57750,10 @@ private:
         using iterator_category = std::conditional_t<is_bidirectional_or_better::value,
             std::bidirectional_iterator_tag, std::conditional_t<is_forward_or_better::value,
             std::forward_iterator_tag, std::input_iterator_tag>>;
-        using value_type        = detail::ranges::iter_value_t<Iter>;
-        using pointer           = detail::ranges::iter_pointer_t<Iter>;
-        using reference         = detail::ranges::iter_reference_t<Iter>;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using value_type        = detail::rng::iter_value_t<Iter>;
+        using pointer           = detail::rng::iter_pointer_t<Iter>;
+        using reference         = detail::rng::iter_reference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         uaiw_constexpr take() = default;
         uaiw_constexpr explicit take(take_view& p, Iter begin, Sent, std::size_t n)
@@ -57572,8 +57810,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const take& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     std::size_t count = 0;
@@ -57594,7 +57832,7 @@ public:
 };
 
 template<class Range>
-class drop_view : public detail::ranges::view_base
+class drop_view : public detail::rng::view_base
 {
     // Our drop view is always bidirectional or worse so there are no optimizations
     // if Range is random access because we expect utf8_view/utf16_view before this view.
@@ -57607,7 +57845,7 @@ private:
         drop_view* parent = nullptr;
         Iter it_pos;
 
-        using iter_tag = detail::ranges::iter_tag<Iter>;
+        using iter_tag = detail::rng::iter_tag<Iter>;
 
         using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
         using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
@@ -57616,10 +57854,10 @@ private:
         using iterator_category = std::conditional_t<is_bidirectional_or_better::value,
             std::bidirectional_iterator_tag, std::conditional_t<is_forward_or_better::value,
             std::forward_iterator_tag, std::input_iterator_tag>>;
-        using value_type        = detail::ranges::iter_value_t<Iter>;
-        using pointer           = detail::ranges::iter_pointer_t<Iter>;
-        using reference         = detail::ranges::iter_reference_t<Iter>;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using value_type        = detail::rng::iter_value_t<Iter>;
+        using pointer           = detail::rng::iter_pointer_t<Iter>;
+        using reference         = detail::rng::iter_reference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         uaiw_constexpr drop() = default;
         uaiw_constexpr explicit drop(drop_view& p, Iter begin, Sent end, std::size_t cnt = 0)
@@ -57674,8 +57912,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const drop& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     std::size_t count = 0;
@@ -57708,14 +57946,15 @@ public:
 
 } // namespace ranges
 
-namespace detail {
+namespace detail::rng {
 
 /* UTF8_VIEW */
 
 struct adaptor_utf8
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::utf8_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::utf8_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_utf8& a) { return a(std::forward<R>(r)); }
@@ -57725,7 +57964,8 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_utf8& a) { return a(std::forw
 struct adaptor_utf16
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::utf16_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::utf16_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_utf16& a) { return a(std::forward<R>(r)); }
@@ -57738,7 +57978,8 @@ struct adaptor_closure_filter
     Pred p;
     uaiw_constexpr explicit adaptor_closure_filter(Pred pred) : p{pred} {}
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::filter_view{std::forward<R>(r), p}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::filter_view{std::forward<R>(r), p}; }
 };
 template<class R, class Pred>
 uaiw_constexpr auto operator|(R&& r, const adaptor_closure_filter<Pred>& a) { return a(std::forward<R>(r)); }
@@ -57746,9 +57987,11 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_closure_filter<Pred>& a) { re
 struct adaptor_filter
 {
     template<class R, class Pred>
-    uaiw_constexpr auto operator()(R&& r, Pred pred) const { return uni::ranges::filter_view{std::forward<R>(r), std::move(pred)}; }
+    uaiw_constexpr auto operator()(R&& r, Pred pred) const
+    { return ranges::filter_view{std::forward<R>(r), std::move(pred)}; }
     template<class Pred>
-    uaiw_constexpr auto operator()(Pred pred) const { return adaptor_closure_filter<Pred>{std::move(pred)}; }
+    uaiw_constexpr auto operator()(Pred pred) const
+    { return adaptor_closure_filter<Pred>{std::move(pred)}; }
 };
 
 /* REVERSE_VIEW */
@@ -57756,7 +57999,8 @@ struct adaptor_filter
 struct adaptor_reverse
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::reverse_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::reverse_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_reverse& a) { return a(std::forward<R>(r)); }
@@ -57769,7 +58013,8 @@ struct adaptor_closure_drop
     uaiw_constexpr explicit adaptor_closure_drop(std::size_t n): count{n} {}
 
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::drop_view{std::forward<R>(r), count}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::drop_view{std::forward<R>(r), count}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, adaptor_closure_drop const &a) { return a(std::forward<R>(r)); }
@@ -57777,8 +58022,10 @@ uaiw_constexpr auto operator|(R&& r, adaptor_closure_drop const &a) { return a(s
 struct adaptor_drop
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r, std::size_t count) const { return uni::ranges::drop_view{std::forward<R>(r), count}; }
-    uaiw_constexpr auto operator()(std::size_t count) const { return adaptor_closure_drop{count}; }
+    uaiw_constexpr auto operator()(R&& r, std::size_t count) const
+    { return ranges::drop_view{std::forward<R>(r), count}; }
+    uaiw_constexpr auto operator()(std::size_t count) const
+    { return adaptor_closure_drop{count}; }
 };
 
 /* TAKE_VIEW */
@@ -57789,7 +58036,8 @@ struct adaptor_closure_take
     uaiw_constexpr explicit adaptor_closure_take(std::size_t n): count{n} {}
 
     template <class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::take_view{std::forward<R>(r), count}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::take_view{std::forward<R>(r), count}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, adaptor_closure_take const &a) { return a(std::forward<R>(r)); }
@@ -57797,8 +58045,10 @@ uaiw_constexpr auto operator|(R&& r, adaptor_closure_take const &a) { return a(s
 struct adaptor_take
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r, std::size_t count) const { return uni::ranges::take_view{std::forward<R>(r), count}; }
-    uaiw_constexpr auto operator()(std::size_t count) const { return adaptor_closure_take{count}; }
+    uaiw_constexpr auto operator()(R&& r, std::size_t count) const
+    { return ranges::take_view{std::forward<R>(r), count}; }
+    uaiw_constexpr auto operator()(std::size_t count) const
+    { return adaptor_closure_take{count}; }
 };
 
 /* TRANSFORM_VIEW */
@@ -57809,7 +58059,8 @@ struct adaptor_closure_transform
     Func f;
     uaiw_constexpr explicit adaptor_closure_transform(Func func) : f{func} {}
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::transform_view{std::forward<R>(r), f}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::transform_view{std::forward<R>(r), f}; }
 };
 template<class R, class Func>
 uaiw_constexpr auto operator|(R&& r, const adaptor_closure_transform<Func>& a) { return a(std::forward<R>(r)); }
@@ -57817,23 +58068,28 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_closure_transform<Func>& a) {
 struct adaptor_transform
 {
     template<class R, class Func>
-    uaiw_constexpr auto operator()(R&& r, Func f) const { return uni::ranges::transform_view{std::forward<R>(r), std::move(f)}; }
+    uaiw_constexpr auto operator()(R&& r, Func f) const
+    { return ranges::transform_view{std::forward<R>(r), std::move(f)}; }
     template<class Func>
-    uaiw_constexpr auto operator()(Func f) const { return adaptor_closure_transform<Func>{std::move(f)}; }
+    uaiw_constexpr auto operator()(Func f) const
+    { return adaptor_closure_transform<Func>{std::move(f)}; }
 };
 
 /* TO_UTF8 */
 
 // https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2022/p1206r7.pdf
 
-template<class Result>
+template<class Result, class Alloc = std::allocator<detail::rng::range_value_t<Result>>>
 struct adaptor_closure_to_utf8
 {
+    Alloc alloc;
+    uaiw_constexpr explicit adaptor_closure_to_utf8(const Alloc& a = Alloc()): alloc{a} {}
+
     template<class R>
     uaiw_constexpr auto operator()(R&& r) const
     {
-        using range_v = uni::detail::ranges::range_value_t<R>;
-        using result_v = uni::detail::ranges::range_value_t<Result>;
+        using range_v = detail::rng::range_value_t<R>;
+        using result_v = detail::rng::range_value_t<Result>;
 
         // Technically we want this static_assert for range_v:
         // static_assert(std::is_same_v<range_v, char32_t>);
@@ -57844,34 +58100,45 @@ struct adaptor_closure_to_utf8
         static_assert(std::is_integral_v<result_v>,
                       "to_utf8 result type cannot store UTF-8");
 
-        Result result;
+        Result result{alloc};
         std::back_insert_iterator output{result};
         for (auto c : r)
             detail::impl_output_utf8(static_cast<char32_t>(c), output);
         return result;
     }
 };
-template<class R, class Result>
-uaiw_constexpr auto operator|(R&& r, const adaptor_closure_to_utf8<Result>& a) { return a(std::forward<R>(r)); }
+template<class R, class Result, class Alloc>
+uaiw_constexpr auto operator|(R&& r, const adaptor_closure_to_utf8<Result, Alloc>& a) { return a(std::forward<R>(r)); }
 
 template<class Result>
 struct adaptor_to_utf8
 {
-    uaiw_constexpr auto operator()() const { return adaptor_closure_to_utf8<Result>{}; }
-    template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return adaptor_closure_to_utf8<Result>{}(std::forward<R>(r)); }
+    uaiw_constexpr auto operator()() const
+    { return adaptor_closure_to_utf8<Result>{}; }
+    template<class R, class = std::enable_if_t<detail::rng::has_member_begin<R>::value>>
+    uaiw_constexpr auto operator()(R&& r) const
+    { return adaptor_closure_to_utf8<Result>{}(std::forward<R>(r)); }
+    template<class Alloc, class = std::enable_if_t<detail::rng::has_member_allocate<Alloc>::value>>
+    uaiw_constexpr auto operator()(const Alloc& a) const
+    { return adaptor_closure_to_utf8<Result, Alloc>{a}; }
+    template<class R, class Alloc>
+    uaiw_constexpr auto operator()(R&& r, const Alloc& a) const
+    { return adaptor_closure_to_utf8<Result, Alloc>{a}(std::forward<R>(r)); }
 };
 
 /* TO_UTF16 */
 
-template<class Result>
+template<class Result, class Alloc = std::allocator<detail::rng::range_value_t<Result>>>
 struct adaptor_closure_to_utf16
 {
+    Alloc alloc;
+    uaiw_constexpr explicit adaptor_closure_to_utf16(const Alloc& a = Alloc()): alloc{a} {}
+
     template<class R>
     uaiw_constexpr auto operator()(R&& r) const
     {
-        using range_v = uni::detail::ranges::range_value_t<R>;
-        using result_v = uni::detail::ranges::range_value_t<Result>;
+        using range_v = detail::rng::range_value_t<R>;
+        using result_v = detail::rng::range_value_t<Result>;
 
         // See comments in to_utf8 adaptor above
         // static_assert(std::is_same_v<range_v, char32_t>);
@@ -57880,44 +58147,53 @@ struct adaptor_closure_to_utf16
         static_assert(std::is_integral_v<result_v> && sizeof(result_v) >= sizeof(char16_t),
                       "to_utf16 result type cannot store UTF-16");
 
-        Result result;
+        Result result{alloc};
         std::back_insert_iterator output{result};
         for (auto c : r)
             detail::impl_output_utf16(static_cast<char32_t>(c), output);
         return result;
     }
 };
-template<class R, class Result>
-uaiw_constexpr auto operator|(R&& r, const adaptor_closure_to_utf16<Result>& a) { return a(std::forward<R>(r)); }
+template<class R, class Result, class Alloc>
+uaiw_constexpr auto operator|(R&& r, const adaptor_closure_to_utf16<Result, Alloc>& a) { return a(std::forward<R>(r)); }
 
 template<class Result>
 struct adaptor_to_utf16
 {
-    uaiw_constexpr auto operator()() const { return adaptor_closure_to_utf16<Result>{}; }
-    template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return adaptor_closure_to_utf16<Result>{}(std::forward<R>(r)); }
+    uaiw_constexpr auto operator()() const
+    { return adaptor_closure_to_utf16<Result>{}; }
+    template<class R, class = std::enable_if_t<detail::rng::has_member_begin<R>::value>>
+    uaiw_constexpr auto operator()(R&& r) const
+    { return adaptor_closure_to_utf16<Result>{}(std::forward<R>(r)); }
+    template<class Alloc, class = std::enable_if_t<detail::rng::has_member_allocate<Alloc>::value>>
+    uaiw_constexpr auto operator()(const Alloc& a) const
+    { return adaptor_closure_to_utf16<Result, Alloc>{a}; }
+    template<class R, class Alloc>
+    uaiw_constexpr auto operator()(R&& r, const Alloc& a) const
+    { return adaptor_closure_to_utf16<Result, Alloc>{a}(std::forward<R>(r)); }
 };
 
 /* TO_UTF8_RESERVE */
 
-template<class Result>
+template<class Result, class Alloc = std::allocator<detail::rng::range_value_t<Result>>>
 struct adaptor_closure_to_utf8_reserve
 {
     std::size_t size = 0;
-    uaiw_constexpr explicit adaptor_closure_to_utf8_reserve(std::size_t n): size{n} {}
+    Alloc alloc;
+    uaiw_constexpr explicit adaptor_closure_to_utf8_reserve(std::size_t n, const Alloc& a = Alloc()): size{n}, alloc{a} {}
 
     template<class R>
     uaiw_constexpr auto operator()(R&& r) const
     {
-        using range_v = uni::detail::ranges::range_value_t<R>;
-        using result_v = uni::detail::ranges::range_value_t<Result>;
+        using range_v = detail::rng::range_value_t<R>;
+        using result_v = detail::rng::range_value_t<Result>;
 
         static_assert(std::is_integral_v<range_v> && sizeof(range_v) >= sizeof(char32_t),
                       "to_utf8_reserve range requires char32_t range");
         static_assert(std::is_integral_v<result_v>,
                       "to_utf8_reserve result type cannot store UTF-8");
 
-        Result result;
+        Result result{alloc};
         result.reserve(size);
         std::back_insert_iterator output{result};
         for (auto c : r)
@@ -57925,37 +58201,46 @@ struct adaptor_closure_to_utf8_reserve
         return result;
     }
 };
-template<class R, class Result>
-uaiw_constexpr auto operator|(R&& r, const adaptor_closure_to_utf8_reserve<Result>& a) { return a(std::forward<R>(r)); }
+template<class R, class Result, class Alloc>
+uaiw_constexpr auto operator|(R&& r, const adaptor_closure_to_utf8_reserve<Result, Alloc>& a) { return a(std::forward<R>(r)); }
 
 template<class Result>
 struct adaptor_to_utf8_reserve
 {
-    uaiw_constexpr auto operator()(std::size_t size) const { return adaptor_closure_to_utf8_reserve<Result>{size}; }
+    uaiw_constexpr auto operator()(std::size_t n) const
+    { return adaptor_closure_to_utf8_reserve<Result>{n}; }
     template<class R>
-    uaiw_constexpr auto operator()(R&& r, std::size_t size) const { return adaptor_closure_to_utf8_reserve<Result>{size}(std::forward<R>(r)); }
+    uaiw_constexpr auto operator()(R&& r, std::size_t n) const
+    { return adaptor_closure_to_utf8_reserve<Result>{n}(std::forward<R>(r)); }
+    template<class Alloc>
+    uaiw_constexpr auto operator()(std::size_t n, const Alloc& a) const
+    { return adaptor_closure_to_utf8_reserve<Result, Alloc>{n, a}; }
+    template<class R, class Alloc>
+    uaiw_constexpr auto operator()(R&& r, std::size_t n, const Alloc& a) const
+    { return adaptor_closure_to_utf8_reserve<Result, Alloc>{n, a}(std::forward<R>(r)); }
 };
 
 /* TO_UTF16_RESERVE */
 
-template<class Result>
+template<class Result, class Alloc = std::allocator<detail::rng::range_value_t<Result>>>
 struct adaptor_closure_to_utf16_reserve
 {
     std::size_t size = 0;
-    uaiw_constexpr explicit adaptor_closure_to_utf16_reserve(std::size_t n): size{n} {}
+    Alloc alloc;
+    uaiw_constexpr explicit adaptor_closure_to_utf16_reserve(std::size_t n, const Alloc& a = Alloc()): size{n}, alloc{a} {}
 
     template<class R>
     uaiw_constexpr auto operator()(R&& r) const
     {
-        using range_v = uni::detail::ranges::range_value_t<R>;
-        using result_v = uni::detail::ranges::range_value_t<Result>;
+        using range_v = detail::rng::range_value_t<R>;
+        using result_v = detail::rng::range_value_t<Result>;
 
         static_assert(std::is_integral_v<range_v> && sizeof(range_v) >= sizeof(char32_t),
                       "to_utf16_reserve range requires char32_t range");
         static_assert(std::is_integral_v<result_v> && sizeof(result_v) >= sizeof(char16_t),
                       "to_utf16_reserve result type cannot store UTF-16");
 
-        Result result;
+        Result result{alloc};
         result.reserve(size);
         std::back_insert_iterator output{result};
         for (auto c : r)
@@ -57963,28 +58248,36 @@ struct adaptor_closure_to_utf16_reserve
         return result;
     }
 };
-template<class R, class Result>
-uaiw_constexpr auto operator|(R&& r, const adaptor_closure_to_utf16_reserve<Result>& a) { return a(std::forward<R>(r)); }
+template<class R, class Result, class Alloc>
+uaiw_constexpr auto operator|(R&& r, const adaptor_closure_to_utf16_reserve<Result, Alloc>& a) { return a(std::forward<R>(r)); }
 
 template<class Result>
 struct adaptor_to_utf16_reserve
 {
-    uaiw_constexpr auto operator()(std::size_t size) const { return adaptor_closure_to_utf16_reserve<Result>{size}; }
+    uaiw_constexpr auto operator()(std::size_t n) const
+    { return adaptor_closure_to_utf16_reserve<Result>{n}; }
     template<class R>
-    uaiw_constexpr auto operator()(R&& r, std::size_t size) const { return adaptor_closure_to_utf16_reserve<Result>{size}(std::forward<R>(r)); }
+    uaiw_constexpr auto operator()(R&& r, std::size_t n) const
+    { return adaptor_closure_to_utf16_reserve<Result>{n}(std::forward<R>(r)); }
+    template<class Alloc>
+    uaiw_constexpr auto operator()(std::size_t n, const Alloc& a) const
+    { return adaptor_closure_to_utf16_reserve<Result, Alloc>{n, a}; }
+    template<class R, class Alloc>
+    uaiw_constexpr auto operator()(R&& r, std::size_t n, const Alloc& a) const
+    { return adaptor_closure_to_utf16_reserve<Result, Alloc>{n, a}(std::forward<R>(r)); }
 };
 
-} // namespace detail
+} // namespace detail::rng
 
 namespace ranges::views {
 
-inline constexpr detail::adaptor_utf8 utf8;
-inline constexpr detail::adaptor_utf16 utf16;
-inline constexpr detail::adaptor_reverse reverse;
-inline constexpr detail::adaptor_filter filter;
-inline constexpr detail::adaptor_transform transform;
-inline constexpr detail::adaptor_take take;
-inline constexpr detail::adaptor_drop drop;
+inline constexpr detail::rng::adaptor_utf8 utf8;
+inline constexpr detail::rng::adaptor_utf16 utf16;
+inline constexpr detail::rng::adaptor_reverse reverse;
+inline constexpr detail::rng::adaptor_filter filter;
+inline constexpr detail::rng::adaptor_transform transform;
+inline constexpr detail::rng::adaptor_take take;
+inline constexpr detail::rng::adaptor_drop drop;
 
 } // namespace views
 
@@ -57997,25 +58290,25 @@ namespace ranges {
 // It is handled by test/test_ranges.h -> test_ranges_ctad()
 
 template<class Range>
-utf8_view(Range&&) -> utf8_view<uni::views::all_t<Range>>;
+utf8_view(Range&&) -> utf8_view<views::all_t<Range>>;
 
 template<class Range>
-utf16_view(Range&&) -> utf16_view<uni::views::all_t<Range>>;
+utf16_view(Range&&) -> utf16_view<views::all_t<Range>>;
 
 template<class Range, class Pred>
-filter_view(Range&&, Pred) -> filter_view<uni::views::all_t<Range>, Pred>;
+filter_view(Range&&, Pred) -> filter_view<views::all_t<Range>, Pred>;
 
 template<class Range>
-reverse_view(Range&&) -> reverse_view<uni::views::all_t<Range>>;
+reverse_view(Range&&) -> reverse_view<views::all_t<Range>>;
 
 template<class Range>
-drop_view(Range&&, std::size_t) -> drop_view<uni::views::all_t<Range>>;
+drop_view(Range&&, std::size_t) -> drop_view<views::all_t<Range>>;
 
 template<class Range, class Func>
-transform_view(Range&&, Func) -> transform_view<uni::views::all_t<Range>, Func>;
+transform_view(Range&&, Func) -> transform_view<views::all_t<Range>, Func>;
 
 template<class Range>
-take_view(Range&&, std::size_t) -> take_view<uni::views::all_t<Range>>;
+take_view(Range&&, std::size_t) -> take_view<views::all_t<Range>>;
 
 } // namespace ranges
 
@@ -58027,13 +58320,13 @@ namespace ranges {
 // It should not interfere with anything.
 
 template<class Result>
-inline constexpr detail::adaptor_to_utf8<Result> to_utf8{};
+inline constexpr detail::rng::adaptor_to_utf8<Result> to_utf8{};
 template<class Result>
-inline constexpr detail::adaptor_to_utf16<Result> to_utf16{};
+inline constexpr detail::rng::adaptor_to_utf16<Result> to_utf16{};
 template<class Result>
-inline constexpr detail::adaptor_to_utf8_reserve<Result> to_utf8_reserve{};
+inline constexpr detail::rng::adaptor_to_utf8_reserve<Result> to_utf8_reserve{};
 template<class Result>
-inline constexpr detail::adaptor_to_utf16_reserve<Result> to_utf16_reserve{};
+inline constexpr detail::rng::adaptor_to_utf16_reserve<Result> to_utf16_reserve{};
 
 } // namespace ranges
 
@@ -58042,7 +58335,7 @@ namespace views = ranges::views;
 } // namespace uni
 
 
-// AMALGAMATION: uni_algo/convert.h
+// AMALGAMATION: uni_algo/conv.h
 
 
 #include <type_traits>
@@ -58054,7 +58347,7 @@ namespace views = ranges::views;
 //!#include "version.h"
 //!#include "internal/error.h"
 
-//!#include "impl/impl_convert.h"
+//!#include "impl/impl_conv.h"
 
 namespace uni {
 
@@ -58063,7 +58356,7 @@ namespace detail {
 // Implementation details
 // There were 2 possible ways to implement the conversion: using resize or using back_inserter,
 // back_inserter was always 10-30% slower in tests even with reserve so it uses resize approach.
-// Also it doesn't use 2-pass approach: calculate converted string size and then the actual convertion.
+// Also it doesn't use 2-pass approach: calculate converted string size and then the actual conversion.
 // This is obviously at least 50% slower, so it uses 1-pass with shrink_to_fit after.
 
 //#define UNI_ALGO_DISABLE_CPP_ITERATORS
@@ -58074,135 +58367,157 @@ namespace detail {
 // is about 1-2% slower/faster in different compilers and must be considered irrelevant.
 // The behaviour of pointers and iterators versions always absolutely the same.
 
-//#define UNI_ALGO_DISABLE_CPP_SHRINK_TO_FIT
+//#define UNI_ALGO_DISABLE_SHRINK_TO_FIT
 // With this define shrink_to_fit call will be omitted.
 // Performance impact of shrink_to_fit call is 2-20% slower depends on the length of the string.
-// This define must be used for test purposes only.
 
-template<typename DST, typename SRC, size_t SZ,
+template<typename Dst, typename Alloc, typename Src, size_t SizeX,
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FNUTF)(typename SRC::const_pointer, typename SRC::const_pointer, typename DST::pointer, size_t*)>
+    size_t(*FnUTF)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer, size_t*)>
 #else
-    size_t(*FNUTF)(typename SRC::const_iterator, typename SRC::const_iterator, typename DST::iterator, size_t*)>
+    size_t(*FnUTF)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator, size_t*)>
 #endif
-DST t_utf(const SRC& source)
+Dst t_utf(const Alloc& alloc, const Src& src)
 {
-    DST destination;
+    Dst dst{alloc};
 
-    std::size_t length = source.size();
+    std::size_t length = src.size();
 
-    //if (length && length <= destination.max_size() / SZ)
     if (length)
     {
-        destination.resize(length * SZ);
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        destination.resize(FNUTF(source.data(), source.data() + source.size(), destination.data(), nullptr));
+        if (length > dst.max_size() / SizeX) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
 #else
-        destination.resize(FNUTF(source.cbegin(), source.cend(), destination.begin(), nullptr));
+            std::abort();
 #endif
-#ifndef UNI_ALGO_DISABLE_CPP_SHRINK_TO_FIT
-        destination.shrink_to_fit();
+        }
+
+        dst.resize(length * SizeX);
+#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
+        dst.resize(FnUTF(src.data(), src.data() + src.size(), dst.data(), nullptr));
+#else
+        dst.resize(FnUTF(src.cbegin(), src.cend(), dst.begin(), nullptr));
+#endif
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
 #endif
     }
 
-    return destination;
+    return dst;
 }
 
-template<typename DST, typename SRC, size_t SZ,
+template<typename Dst, typename Alloc, typename Src, size_t SizeX,
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FNUTF)(typename SRC::const_pointer, typename SRC::const_pointer, typename DST::pointer, size_t*)>
+    size_t(*FnUTF)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer, size_t*)>
 #else
-    size_t(*FNUTF)(typename SRC::const_iterator, typename SRC::const_iterator, typename DST::iterator, size_t*)>
+    size_t(*FnUTF)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator, size_t*)>
 #endif
-DST t_utf(const SRC& source, uni::error& error)
+Dst t_utf(const Alloc& alloc, const Src& src, uni::error& error)
 {
     error.reset();
 
-    DST destination;
+    Dst dst{alloc};
 
-    std::size_t length = source.size();
+    std::size_t length = src.size();
 
     if (length)
     {
-        destination.resize(length * SZ);
+        if (length > dst.max_size() / SizeX) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
+#else
+            std::abort();
+#endif
+        }
+
+        dst.resize(length * SizeX);
         std::size_t err = impl_npos;
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        std::size_t size = FNUTF(source.data(), source.data() + source.size(), destination.data(), &err);
+        std::size_t size = FnUTF(src.data(), src.data() + src.size(), dst.data(), &err);
 #else
-        std::size_t size = FNUTF(source.cbegin(), source.cend(), destination.begin(), &err);
+        std::size_t size = FnUTF(src.cbegin(), src.cend(), dst.begin(), &err);
 #endif
         if (err == impl_npos)
-            destination.resize(size);
+            dst.resize(size);
         else
         {
-            destination.clear();
+            dst.clear();
             error = uni::error{true, err};
         }
-#ifndef UNI_ALGO_DISABLE_CPP_SHRINK_TO_FIT
-        destination.shrink_to_fit();
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
 #endif
     }
 
-    return destination;
+    return dst;
 }
 
 } // namespace detail
 
 // Template functions
 
-template<typename UTF8, typename UTF16>
-std::basic_string<UTF16> utf8to16(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+utf8to16(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_utf<std::basic_string<UTF16>, std::basic_string_view<UTF8>,
-            detail::impl_x_utf8to16, detail::impl_utf8to16>(source);
+    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_utf8to16, detail::impl_utf8to16>(alloc, source);
 }
-template<typename UTF16, typename UTF8>
-std::basic_string<UTF8> utf16to8(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+utf16to8(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_utf<std::basic_string<UTF8>, std::basic_string_view<UTF16>,
-            detail::impl_x_utf16to8, detail::impl_utf16to8>(source);
+    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_utf16to8, detail::impl_utf16to8>(alloc, source);
 }
-template<typename UTF8, typename UTF32>
-std::basic_string<UTF32> utf8to32(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename UTF32, typename Alloc = std::allocator<UTF32>>
+std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
+utf8to32(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
     static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
 
-    return detail::t_utf<std::basic_string<UTF32>, std::basic_string_view<UTF8>,
-            detail::impl_x_utf8to32, detail::impl_utf8to32>(source);
+    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_utf8to32, detail::impl_utf8to32>(alloc, source);
 }
-template<typename UTF32, typename UTF8>
-std::basic_string<UTF8> utf32to8(std::basic_string_view<UTF32> source)
+template<typename UTF32, typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+utf32to8(std::basic_string_view<UTF32> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
     static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
 
-    return detail::t_utf<std::basic_string<UTF8>, std::basic_string_view<UTF32>,
-            detail::impl_x_utf32to8, detail::impl_utf32to8>(source);
+    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF32>,
+            detail::impl_x_utf32to8, detail::impl_utf32to8>(alloc, source);
 }
-template<typename UTF16, typename UTF32>
-std::basic_string<UTF32> utf16to32(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename UTF32, typename Alloc = std::allocator<UTF32>>
+std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
+utf16to32(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
     static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
 
-    return detail::t_utf<std::basic_string<UTF32>, std::basic_string_view<UTF16>,
-            detail::impl_x_utf16to32, detail::impl_utf16to32>(source);
+    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_utf16to32, detail::impl_utf16to32>(alloc, source);
 }
-template<typename UTF32, typename UTF16>
-std::basic_string<UTF16> utf32to16(std::basic_string_view<UTF32> source)
+template<typename UTF32, typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+utf32to16(std::basic_string_view<UTF32> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
     static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
 
-    return detail::t_utf<std::basic_string<UTF16>, std::basic_string_view<UTF32>,
-            detail::impl_x_utf32to16, detail::impl_utf32to16>(source);
+    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF32>,
+            detail::impl_x_utf32to16, detail::impl_utf32to16>(alloc, source);
 }
 
 // Short non-template functions for std::string, std::wstring, std::u16string, std::u32string
@@ -58272,59 +58587,65 @@ namespace strict {
 
 // Template functions
 
-template<typename UTF8, typename UTF16>
-std::basic_string<UTF16> utf8to16(std::basic_string_view<UTF8> source, uni::error& error)
+template<typename UTF8, typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+utf8to16(std::basic_string_view<UTF8> source, uni::error& error, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_utf<std::basic_string<UTF16>, std::basic_string_view<UTF8>,
-            detail::impl_x_utf8to16, detail::impl_utf8to16>(source, error);
+    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_utf8to16, detail::impl_utf8to16>(alloc, source, error);
 }
-template<typename UTF16, typename UTF8>
-std::basic_string<UTF8> utf16to8(std::basic_string_view<UTF16> source, uni::error& error)
+template<typename UTF16, typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+utf16to8(std::basic_string_view<UTF16> source, uni::error& error, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_utf<std::basic_string<UTF8>, std::basic_string_view<UTF16>,
-            detail::impl_x_utf16to8, detail::impl_utf16to8>(source, error);
+    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_utf16to8, detail::impl_utf16to8>(alloc, source, error);
 }
-template<typename UTF8, typename UTF32>
-std::basic_string<UTF32> utf8to32(std::basic_string_view<UTF8> source, uni::error& error)
+template<typename UTF8, typename UTF32, typename Alloc = std::allocator<UTF32>>
+std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
+utf8to32(std::basic_string_view<UTF8> source, uni::error& error, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
     static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
 
-    return detail::t_utf<std::basic_string<UTF32>, std::basic_string_view<UTF8>,
-            detail::impl_x_utf8to32, detail::impl_utf8to32>(source, error);
+    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_utf8to32, detail::impl_utf8to32>(alloc, source, error);
 }
-template<typename UTF32, typename UTF8>
-std::basic_string<UTF8> utf32to8(std::basic_string_view<UTF32> source, uni::error& error)
+template<typename UTF32, typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+utf32to8(std::basic_string_view<UTF32> source, uni::error& error, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
     static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
 
-    return detail::t_utf<std::basic_string<UTF8>, std::basic_string_view<UTF32>,
-            detail::impl_x_utf32to8, detail::impl_utf32to8>(source, error);
+    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF32>,
+            detail::impl_x_utf32to8, detail::impl_utf32to8>(alloc, source, error);
 }
-template<typename UTF16, typename UTF32>
-std::basic_string<UTF32> utf16to32(std::basic_string_view<UTF16> source, uni::error& error)
+template<typename UTF16, typename UTF32, typename Alloc = std::allocator<UTF32>>
+std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
+utf16to32(std::basic_string_view<UTF16> source, uni::error& error, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
     static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
 
-    return detail::t_utf<std::basic_string<UTF32>, std::basic_string_view<UTF16>,
-            detail::impl_x_utf16to32, detail::impl_utf16to32>(source, error);
+    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_utf16to32, detail::impl_utf16to32>(alloc, source, error);
 }
-template<typename UTF32, typename UTF16>
-std::basic_string<UTF16> utf32to16(std::basic_string_view<UTF32> source, uni::error& error)
+template<typename UTF32, typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+utf32to16(std::basic_string_view<UTF32> source, uni::error& error, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
     static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
 
-    return detail::t_utf<std::basic_string<UTF16>, std::basic_string_view<UTF32>,
-            detail::impl_x_utf32to16, detail::impl_utf32to16>(source, error);
+    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF32>,
+            detail::impl_x_utf32to16, detail::impl_utf32to16>(alloc, source, error);
 }
 
 // Short non-template functions for std::string, std::wstring, std::u16string, std::u32string
@@ -58392,6 +58713,135 @@ inline std::u16string utf32to16u(std::wstring_view source, uni::error& error)
 
 } // namespace strict
 
+template<typename UTF8>
+bool is_valid_utf8(std::basic_string_view<UTF8> source)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
+    return detail::impl_is_valid_utf8(source.data(), source.data() + source.size(), nullptr);
+#else
+    return detail::impl_is_valid_utf8(source.cbegin(), source.cend(), nullptr);
+#endif
+}
+
+template<typename UTF16>
+bool is_valid_utf16(std::basic_string_view<UTF16> source)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
+    return detail::impl_is_valid_utf16(source.data(), source.data() + source.size(), nullptr);
+#else
+    return detail::impl_is_valid_utf16(source.cbegin(), source.cend(), nullptr);
+#endif
+}
+
+template<typename UTF32>
+bool is_valid_utf32(std::basic_string_view<UTF32> source)
+{
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
+    return detail::impl_is_valid_utf32(source.data(), source.data() + source.size(), nullptr);
+#else
+    return detail::impl_is_valid_utf32(source.cbegin(), source.cend(), nullptr);
+#endif
+}
+
+template<typename UTF8>
+bool is_valid_utf8(std::basic_string_view<UTF8> source, uni::error& error)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    size_t err = detail::impl_npos;
+#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
+    bool ret = detail::impl_is_valid_utf8(source.data(), source.data() + source.size(), &err);
+#else
+    bool ret = detail::impl_is_valid_utf8(source.cbegin(), source.cend(), &err);
+#endif
+    error = uni::error{!ret, err};
+
+    return ret;
+}
+
+template<typename UTF16>
+bool is_valid_utf16(std::basic_string_view<UTF16> source, uni::error& error)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    size_t err = detail::impl_npos;
+#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
+    bool ret = detail::impl_is_valid_utf16(source.data(), source.data() + source.size(), &err);
+#else
+    bool ret = detail::impl_is_valid_utf16(source.cbegin(), source.cend(), &err);
+#endif
+    error = uni::error{!ret, err};
+
+    return ret;
+}
+
+template<typename UTF32>
+bool is_valid_utf32(std::basic_string_view<UTF32> source, uni::error& error)
+{
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    size_t err = detail::impl_npos;
+#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
+    bool ret = detail::impl_is_valid_utf32(source.data(), source.data() + source.size(), &err);
+#else
+    bool ret = detail::impl_is_valid_utf32(source.cbegin(), source.cend(), &err);
+#endif
+    error = uni::error{!ret, err};
+
+    return ret;
+}
+
+inline bool is_valid_utf8(std::string_view source)
+{
+    return is_valid_utf8<char>(source);
+}
+inline bool is_valid_utf16(std::u16string_view source)
+{
+    return is_valid_utf16<char16_t>(source);
+}
+inline bool is_valid_utf32(std::u32string_view source)
+{
+    return is_valid_utf32<char32_t>(source);
+}
+inline bool is_valid_utf8(std::string_view source, uni::error& error)
+{
+    return is_valid_utf8<char>(source, error);
+}
+inline bool is_valid_utf16(std::u16string_view source, uni::error& error)
+{
+    return is_valid_utf16<char16_t>(source, error);
+}
+inline bool is_valid_utf32(std::u32string_view source, uni::error& error)
+{
+    return is_valid_utf32<char32_t>(source, error);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline bool is_valid_utf16(std::wstring_view source)
+{
+    return is_valid_utf16<wchar_t>(source);
+}
+inline bool is_valid_utf16(std::wstring_view source, uni::error& error)
+{
+    return is_valid_utf16<wchar_t>(source, error);
+}
+#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
+inline bool is_valid_utf32(std::wstring_view source)
+{
+    return is_valid_utf32<wchar_t>(source);
+}
+inline bool is_valid_utf32(std::wstring_view source, uni::error& error)
+{
+    return is_valid_utf32<wchar_t>(source, error);
+}
+#endif // WCHAR_MAX >= 0x7FFFFFFF
+
+
 #ifdef __cpp_lib_char8_t
 
 inline std::u16string utf8to16u(std::u8string_view source)
@@ -58409,6 +58859,15 @@ inline std::u32string utf8to32u(std::u8string_view source)
 inline std::u8string utf32to8u(std::u32string_view source)
 {
     return utf32to8<char32_t, char8_t>(source);
+}
+
+inline bool is_valid_utf8(std::u8string_view source)
+{
+    return is_valid_utf8<char8_t>(source);
+}
+inline bool is_valid_utf8(std::u8string_view source, uni::error& error)
+{
+    return is_valid_utf8<char8_t>(source, error);
 }
 
 #if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
@@ -58481,7 +58940,7 @@ inline std::u8string utf32to8u(std::wstring_view source, uni::error& error)
 
 
 #ifdef UNI_ALGO_DISABLE_BREAK_GRAPHEME
-#  error "Break Grapheme module is disabled via define UNI_ALGO_DISABLE_BREAK_GRAPHEME"
+#error "Break Grapheme module is disabled via define UNI_ALGO_DISABLE_BREAK_GRAPHEME"
 #endif
 
 #include <type_traits>
@@ -58491,7 +58950,7 @@ inline std::u8string utf32to8u(std::wstring_view source, uni::error& error)
 //!#include "version.h"
 //!#include "internal/ranges_core.h"
 
-//!#include "impl/impl_iterator.h"
+//!#include "impl/impl_iter.h"
 //!#include "impl/impl_break_grapheme.h"
 
 namespace uni {
@@ -58499,15 +58958,15 @@ namespace uni {
 namespace ranges::grapheme {
 
 template<class Range>
-class utf8_view : public detail::ranges::view_base
+class utf8_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class utf8
     {
-        static_assert(detail::ranges::sa_iter_contiguous<Iter>::value &&
-                      std::is_integral_v<detail::ranges::iter_value_t<Iter>>,
-                      "grapheme::utf8 view requires contiguous UTF-8 range");
+        static_assert(detail::rng::is_iter_bidi_or_better<Iter>::value &&
+                      std::is_integral_v<detail::rng::iter_value_t<Iter>>,
+                      "grapheme::utf8 view requires bidirectional or better UTF-8 range");
 
     private:
         utf8_view* parent = nullptr;
@@ -58524,7 +58983,7 @@ private:
             while (it_next != std::end(parent->range))
             {
                 it_pos = it_next;
-                uni::detail::type_codept codepoint = 0;
+                detail::type_codept codepoint = 0;
                 it_next = detail::inline_iter_utf8(it_next, std::end(parent->range), &codepoint, detail::impl_iter_replacement);
                 if (detail::inline_break_grapheme(&state, codepoint))
                     return;
@@ -58541,7 +59000,7 @@ private:
             while (it_begin != std::begin(parent->range))
             {
                 it_next = it_begin;
-                uni::detail::type_codept codepoint = 0;
+                detail::type_codept codepoint = 0;
                 it_begin = detail::inline_iter_rev_utf8(std::begin(parent->range), it_begin, &codepoint, detail::impl_iter_replacement);
                 if (detail::inline_break_grapheme_rev_utf8(&state, codepoint, std::begin(parent->range), it_begin))
                 {
@@ -58554,12 +59013,15 @@ private:
             detail::impl_break_grapheme_state_reset(&state);
         }
 
+        using is_contiguous = detail::rng::is_range_contiguous<Range>;
+
     public:
         using iterator_category = std::bidirectional_iterator_tag;
-        using value_type        = std::basic_string_view<detail::ranges::iter_value_t<Iter>>;
+        using value_type        = std::conditional_t<is_contiguous::value,
+            std::basic_string_view<detail::rng::iter_value_t<Iter>>, void>;
         using pointer           = void;
         using reference         = value_type;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         utf8() = default;
         explicit utf8(utf8_view& p, Iter begin, Sent end)
@@ -58572,9 +59034,10 @@ private:
 
             iter_func_break_grapheme_utf8();
         }
-        uaiw_constexpr reference operator*() const
+        template<class T = reference> typename std::enable_if_t<is_contiguous::value, T>
+        uaiw_constexpr operator*() const
         {
-            return detail::ranges::to_string_view<reference>(parent->range, it_begin, it_pos);
+            return detail::rng::to_string_view<reference>(parent->range, it_begin, it_pos);
         }
         uaiw_constexpr Iter begin() const noexcept { return it_begin; }
         uaiw_constexpr Iter end() const noexcept { return it_pos; }
@@ -58613,8 +59076,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     utf8<iter_t, sent_t> cached_begin_value;
@@ -58644,16 +59107,16 @@ public:
 };
 
 template<class Range>
-class utf16_view : public detail::ranges::view_base
+class utf16_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class utf16
     {
-        static_assert(detail::ranges::sa_iter_contiguous<Iter>::value &&
-                      std::is_integral_v<detail::ranges::iter_value_t<Iter>> &&
-                      sizeof(detail::ranges::iter_value_t<Iter>) >= sizeof(char16_t),
-                      "grapheme::utf16 view requires contiguous UTF-16 range");
+        static_assert(detail::rng::is_iter_bidi_or_better<Iter>::value &&
+                      std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char16_t),
+                      "grapheme::utf16 view requires bidirectional or better UTF-16 range");
 
     private:
         utf16_view* parent = nullptr;
@@ -58670,7 +59133,7 @@ private:
             while (it_next != std::end(parent->range))
             {
                 it_pos = it_next;
-                uni::detail::type_codept codepoint = 0;
+                detail::type_codept codepoint = 0;
                 it_next = detail::inline_iter_utf16(it_next, std::end(parent->range), &codepoint, detail::impl_iter_replacement);
                 if (detail::inline_break_grapheme(&state, codepoint))
                     return;
@@ -58687,7 +59150,7 @@ private:
             while (it_begin != std::begin(parent->range))
             {
                 it_next = it_begin;
-                uni::detail::type_codept codepoint = 0;
+                detail::type_codept codepoint = 0;
                 it_begin = detail::inline_iter_rev_utf16(std::begin(parent->range), it_begin, &codepoint, detail::impl_iter_replacement);
                 if (detail::inline_break_grapheme_rev_utf16(&state, codepoint, std::begin(parent->range), it_begin))
                 {
@@ -58700,12 +59163,15 @@ private:
             detail::impl_break_grapheme_state_reset(&state);
         }
 
+        using is_contiguous = detail::rng::is_range_contiguous<Range>;
+
     public:
         using iterator_category = std::bidirectional_iterator_tag;
-        using value_type        = std::basic_string_view<detail::ranges::iter_value_t<Iter>>;
+        using value_type        = std::conditional_t<is_contiguous::value,
+            std::basic_string_view<detail::rng::iter_value_t<Iter>>, void>;
         using pointer           = void;
         using reference         = value_type;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         utf16() = default;
         explicit utf16(utf16_view& p, Iter begin, Sent end)
@@ -58718,9 +59184,10 @@ private:
 
             iter_func_break_grapheme_utf16();
         }
-        uaiw_constexpr reference operator*() const
+        template<class T = reference> typename std::enable_if_t<is_contiguous::value, T>
+        uaiw_constexpr operator*() const
         {
-            return detail::ranges::to_string_view<reference>(parent->range, it_begin, it_pos);
+            return detail::rng::to_string_view<reference>(parent->range, it_begin, it_pos);
         }
         uaiw_constexpr Iter begin() const noexcept { return it_begin; }
         uaiw_constexpr Iter end() const noexcept { return it_pos; }
@@ -58759,8 +59226,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     utf16<iter_t, sent_t> cached_begin_value;
@@ -58790,20 +59257,21 @@ public:
 };
 
 template<class Range>
-utf8_view(Range&&) -> utf8_view<uni::views::all_t<Range>>;
+utf8_view(Range&&) -> utf8_view<views::all_t<Range>>;
 template<class Range>
-utf16_view(Range&&) -> utf16_view<uni::views::all_t<Range>>;
+utf16_view(Range&&) -> utf16_view<views::all_t<Range>>;
 
 } // namespace ranges::grapheme
 
-namespace detail {
+namespace detail::rng {
 
 /* GRAPHEME_UTF8_VIEW */
 
 struct adaptor_grapheme_utf8
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::grapheme::utf8_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::grapheme::utf8_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_grapheme_utf8& a) { return a(std::forward<R>(r)); }
@@ -58813,17 +59281,18 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_grapheme_utf8& a) { return a(
 struct adaptor_grapheme_utf16
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::grapheme::utf16_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::grapheme::utf16_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_grapheme_utf16& a) { return a(std::forward<R>(r)); }
 
-} // namespace detail
+} // namespace detail::rng
 
 namespace ranges::views::grapheme {
 
-inline constexpr detail::adaptor_grapheme_utf8 utf8;
-inline constexpr detail::adaptor_grapheme_utf16 utf16;
+inline constexpr detail::rng::adaptor_grapheme_utf8 utf8;
+inline constexpr detail::rng::adaptor_grapheme_utf16 utf16;
 
 }
 
@@ -58836,7 +59305,7 @@ namespace views = ranges::views;
 
 
 #ifdef UNI_ALGO_DISABLE_BREAK_WORD
-#  error "Break Word module is disabled via define UNI_ALGO_DISABLE_BREAK_WORD"
+#error "Break Word module is disabled via define UNI_ALGO_DISABLE_BREAK_WORD"
 #endif
 
 #include <type_traits>
@@ -58846,7 +59315,7 @@ namespace views = ranges::views;
 //!#include "version.h"
 //!#include "internal/ranges_core.h"
 
-//!#include "impl/impl_iterator.h"
+//!#include "impl/impl_iter.h"
 //!#include "impl/impl_break_word.h"
 
 namespace uni {
@@ -58856,15 +59325,15 @@ namespace ranges {
 namespace word {
 
 template<class Range>
-class utf8_view : public detail::ranges::view_base
+class utf8_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class utf8
     {
-        static_assert(detail::ranges::sa_iter_contiguous<Iter>::value &&
-                      std::is_integral_v<detail::ranges::iter_value_t<Iter>>,
-                      "word::utf8 view requires contiguous UTF-8 range");
+        static_assert(detail::rng::is_iter_bidi_or_better<Iter>::value &&
+                      std::is_integral_v<detail::rng::iter_value_t<Iter>>,
+                      "word::utf8 view requires bidirectional or better UTF-8 range");
 
     private:
         utf8_view* parent = nullptr;
@@ -58905,7 +59374,7 @@ private:
             {
                 it_next = it_begin;
                 word_prop = next_word_prop;
-                uni::detail::type_codept codepoint = 0;
+                detail::type_codept codepoint = 0;
                 it_begin = detail::inline_iter_rev_utf8(std::begin(parent->range), it_begin, &codepoint, detail::impl_iter_replacement);
                 if (detail::inline_break_word_rev_utf8(&state, codepoint, &next_word_prop, std::begin(parent->range), it_begin))
                 {
@@ -58918,12 +59387,15 @@ private:
             detail::impl_break_word_state_reset(&state);
         }
 
+        using is_contiguous = detail::rng::is_range_contiguous<Range>;
+
     public:
         using iterator_category = std::bidirectional_iterator_tag;
-        using value_type        = std::basic_string_view<detail::ranges::iter_value_t<Iter>>;
+        using value_type        = std::conditional_t<is_contiguous::value,
+            std::basic_string_view<detail::rng::iter_value_t<Iter>>, void>;
         using pointer           = void;
         using reference         = value_type;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         utf8() = default;
         explicit utf8(utf8_view& p, Iter begin, Sent end)
@@ -58936,9 +59408,10 @@ private:
 
             iter_func_break_word_utf8();
         }
-        uaiw_constexpr reference operator*() const
+        template<class T = reference> typename std::enable_if_t<is_contiguous::value, T>
+        uaiw_constexpr operator*() const
         {
-            return detail::ranges::to_string_view<reference>(parent->range, it_begin, it_pos);
+            return detail::rng::to_string_view<reference>(parent->range, it_begin, it_pos);
         }
         uaiw_constexpr Iter begin() const noexcept { return it_begin; }
         uaiw_constexpr Iter end() const noexcept { return it_pos; }
@@ -58986,8 +59459,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     utf8<iter_t, sent_t> cached_begin_value;
@@ -59017,16 +59490,16 @@ public:
 };
 
 template<class Range>
-class utf16_view : public detail::ranges::view_base
+class utf16_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class utf16
     {
-        static_assert(detail::ranges::sa_iter_contiguous<Iter>::value &&
-                      std::is_integral_v<detail::ranges::iter_value_t<Iter>> &&
-                      sizeof(detail::ranges::iter_value_t<Iter>) >= sizeof(char16_t),
-                      "word::utf16 view requires contiguous UTF-16 range");
+        static_assert(detail::rng::is_iter_bidi_or_better<Iter>::value &&
+                      std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char16_t),
+                      "word::utf16 view requires bidirectional or better UTF-16 range");
 
     private:
         utf16_view* parent = nullptr;
@@ -59067,7 +59540,7 @@ private:
             {
                 it_next = it_begin;
                 word_prop = next_word_prop;
-                uni::detail::type_codept codepoint = 0;
+                detail::type_codept codepoint = 0;
                 it_begin = detail::inline_iter_rev_utf16(std::begin(parent->range), it_begin, &codepoint, detail::impl_iter_replacement);
                 if (detail::inline_break_word_rev_utf16(&state, codepoint, &next_word_prop, std::begin(parent->range), it_begin))
                 {
@@ -59080,12 +59553,15 @@ private:
             detail::impl_break_word_state_reset(&state);
         }
 
+        using is_contiguous = detail::rng::is_range_contiguous<Range>;
+
     public:
         using iterator_category = std::bidirectional_iterator_tag;
-        using value_type        = std::basic_string_view<detail::ranges::iter_value_t<Iter>>;
+        using value_type        = std::conditional_t<is_contiguous::value,
+            std::basic_string_view<detail::rng::iter_value_t<Iter>>, void>;
         using pointer           = void;
         using reference         = value_type;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         utf16() = default;
         explicit utf16(utf16_view& p, Iter begin, Sent end)
@@ -59098,9 +59574,10 @@ private:
 
             iter_func_break_word_utf16();
         }
-        uaiw_constexpr reference operator*() const
+        template<class T = reference> typename std::enable_if_t<is_contiguous::value, T>
+        uaiw_constexpr operator*() const
         {
-            return detail::ranges::to_string_view<reference>(parent->range, it_begin, it_pos);
+            return detail::rng::to_string_view<reference>(parent->range, it_begin, it_pos);
         }
         uaiw_constexpr Iter begin() const noexcept { return it_begin; }
         uaiw_constexpr Iter end() const noexcept { return it_pos; }
@@ -59148,8 +59625,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     utf16<iter_t, sent_t> cached_begin_value;
@@ -59183,15 +59660,15 @@ public:
 namespace word_only {
 
 template<class Range>
-class utf8_view : public detail::ranges::view_base
+class utf8_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class utf8
     {
-        static_assert(detail::ranges::sa_iter_contiguous<Iter>::value &&
-                      std::is_integral_v<detail::ranges::iter_value_t<Iter>>,
-                      "word_only::utf8 view requires contiguous UTF-8 range");
+        static_assert(detail::rng::is_iter_bidi_or_better<Iter>::value &&
+                      std::is_integral_v<detail::rng::iter_value_t<Iter>>,
+                      "word_only::utf8 view requires bidirectional or better UTF-8 range");
 
     private:
         utf8_view* parent = nullptr;
@@ -59241,7 +59718,7 @@ private:
             {
                 it_next = it_begin;
                 word_prop = next_word_prop;
-                uni::detail::type_codept codepoint = 0;
+                detail::type_codept codepoint = 0;
                 it_begin = detail::inline_iter_rev_utf8(std::begin(parent->range), it_begin, &codepoint, detail::impl_iter_replacement);
                 if (detail::inline_break_word_rev_utf8(&state, codepoint, &next_word_prop, std::begin(parent->range), it_begin))
                 {
@@ -59258,12 +59735,15 @@ private:
             detail::impl_break_word_state_reset(&state);
         }
 
+        using is_contiguous = detail::rng::is_range_contiguous<Range>;
+
     public:
         using iterator_category = std::bidirectional_iterator_tag;
-        using value_type        = std::basic_string_view<detail::ranges::iter_value_t<Iter>>;
+        using value_type        = std::conditional_t<is_contiguous::value,
+            std::basic_string_view<detail::rng::iter_value_t<Iter>>, void>;
         using pointer           = void;
         using reference         = value_type;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         utf8() = default;
         explicit utf8(utf8_view& p, Iter begin, Sent end)
@@ -59276,9 +59756,10 @@ private:
 
             iter_func_break_word_only_utf8();
         }
-        uaiw_constexpr reference operator*() const
+        template<class T = reference> typename std::enable_if_t<is_contiguous::value, T>
+        uaiw_constexpr operator*() const
         {
-            return detail::ranges::to_string_view<reference>(parent->range, it_begin, it_pos);
+            return detail::rng::to_string_view<reference>(parent->range, it_begin, it_pos);
         }
         uaiw_constexpr Iter begin() const noexcept { return it_begin; }
         uaiw_constexpr Iter end() const noexcept { return it_pos; }
@@ -59317,8 +59798,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     utf8<iter_t, sent_t> cached_begin_value;
@@ -59348,16 +59829,16 @@ public:
 };
 
 template<class Range>
-class utf16_view : public detail::ranges::view_base
+class utf16_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class utf16
     {
-        static_assert(detail::ranges::sa_iter_contiguous<Iter>::value &&
-                      std::is_integral_v<detail::ranges::iter_value_t<Iter>> &&
-                      sizeof(detail::ranges::iter_value_t<Iter>) >= sizeof(char16_t),
-                      "word_only::utf16 view requires contiguous UTF-16 range");
+        static_assert(detail::rng::is_iter_bidi_or_better<Iter>::value &&
+                      std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char16_t),
+                      "word_only::utf16 view requires bidirectional or better UTF-16 range");
 
     private:
         utf16_view* parent = nullptr;
@@ -59407,7 +59888,7 @@ private:
             {
                 it_next = it_begin;
                 word_prop = next_word_prop;
-                uni::detail::type_codept codepoint = 0;
+                detail::type_codept codepoint = 0;
                 it_begin = detail::inline_iter_rev_utf16(std::begin(parent->range), it_begin, &codepoint, detail::impl_iter_replacement);
                 if (detail::inline_break_word_rev_utf16(&state, codepoint, &next_word_prop, std::begin(parent->range), it_begin))
                 {
@@ -59424,12 +59905,15 @@ private:
             detail::impl_break_word_state_reset(&state);
         }
 
+        using is_contiguous = detail::rng::is_range_contiguous<Range>;
+
     public:
         using iterator_category = std::bidirectional_iterator_tag;
-        using value_type        = std::basic_string_view<detail::ranges::iter_value_t<Iter>>;
+        using value_type        = std::conditional_t<is_contiguous::value,
+            std::basic_string_view<detail::rng::iter_value_t<Iter>>, void>;
         using pointer           = void;
         using reference         = value_type;
-        using difference_type   = detail::ranges::iter_difference_t<Iter>;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
 
         utf16() = default;
         explicit utf16(utf16_view& p, Iter begin, Sent end)
@@ -59442,9 +59926,10 @@ private:
 
             iter_func_break_word_only_utf16();
         }
-        uaiw_constexpr reference operator*() const
+        template<class T = reference> typename std::enable_if_t<is_contiguous::value, T>
+        uaiw_constexpr operator*() const
         {
-            return detail::ranges::to_string_view<reference>(parent->range, it_begin, it_pos);
+            return detail::rng::to_string_view<reference>(parent->range, it_begin, it_pos);
         }
         uaiw_constexpr Iter begin() const noexcept { return it_begin; }
         uaiw_constexpr Iter end() const noexcept { return it_pos; }
@@ -59483,8 +59968,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     utf16<iter_t, sent_t> cached_begin_value;
@@ -59517,27 +60002,28 @@ public:
 
 namespace word {
 template<class Range>
-utf8_view(Range&&) -> utf8_view<uni::views::all_t<Range>>;
+utf8_view(Range&&) -> utf8_view<views::all_t<Range>>;
 template<class Range>
-utf16_view(Range&&) -> utf16_view<uni::views::all_t<Range>>;
+utf16_view(Range&&) -> utf16_view<views::all_t<Range>>;
 }
 namespace word_only {
 template<class Range>
-utf8_view(Range&&) -> utf8_view<uni::views::all_t<Range>>;
+utf8_view(Range&&) -> utf8_view<views::all_t<Range>>;
 template<class Range>
-utf16_view(Range&&) -> utf16_view<uni::views::all_t<Range>>;
+utf16_view(Range&&) -> utf16_view<views::all_t<Range>>;
 }
 
 } // namespace ranges
 
-namespace detail {
+namespace detail::rng {
 
 /* WORD_UTF8_VIEW */
 
 struct adaptor_word_utf8
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::word::utf8_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::word::utf8_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_word_utf8& a) { return a(std::forward<R>(r)); }
@@ -59547,7 +60033,8 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_word_utf8& a) { return a(std:
 struct adaptor_word_utf16
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::word::utf16_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::word::utf16_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_word_utf16& a) { return a(std::forward<R>(r)); }
@@ -59557,7 +60044,8 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_word_utf16& a) { return a(std
 struct adaptor_word_only_utf8
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::word_only::utf8_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::word_only::utf8_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_word_only_utf8& a) { return a(std::forward<R>(r)); }
@@ -59567,22 +60055,23 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_word_only_utf8& a) { return a
 struct adaptor_word_only_utf16
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::word_only::utf16_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::word_only::utf16_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_word_only_utf16& a) { return a(std::forward<R>(r)); }
 
-} // namespace detail
+} // namespace detail::rng
 
 namespace ranges::views {
 
 namespace word {
-inline constexpr detail::adaptor_word_utf8 utf8;
-inline constexpr detail::adaptor_word_utf16 utf16;
+inline constexpr detail::rng::adaptor_word_utf8 utf8;
+inline constexpr detail::rng::adaptor_word_utf16 utf16;
 }
 namespace word_only {
-inline constexpr detail::adaptor_word_only_utf8 utf8;
-inline constexpr detail::adaptor_word_only_utf16 utf16;
+inline constexpr detail::rng::adaptor_word_only_utf8 utf8;
+inline constexpr detail::rng::adaptor_word_only_utf16 utf16;
 }
 
 } // namespace ranges::views
@@ -59617,17 +60106,19 @@ namespace uni {
 
 // Forward declaration for system locale stuff
 #ifndef UNI_ALGO_DISABLE_SYSTEM_LOCALE
+#ifndef UNI_ALGO_STATIC_DATA
 class locale;
 
 namespace detail {
 
-const uni::locale& locale_system();
+UNI_ALGO_DLL const uni::locale& locale_system();
 #ifdef UNI_ALGO_EXPERIMENTAL
-const uni::locale& locale_thread();
-void locale_thread_reinit();
+UNI_ALGO_DLL const uni::locale& locale_thread();
+UNI_ALGO_DLL void locale_thread_reinit();
 #endif // UNI_ALGO_EXPERIMENTAL
 
 } // namespace detail
+#endif // UNI_ALGO_STATIC_DATA
 #endif // UNI_ALGO_DISABLE_SYSTEM_LOCALE
 
 class locale
@@ -59742,6 +60233,7 @@ public:
     constexpr locale() = default;
     // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
     constexpr locale(language l) : lang(l) {}
+    constexpr locale(language l, region s) : lang{l}, regn{s} {}
     constexpr locale(language l, script s) : lang{l}, scpt{s} {}
     constexpr locale(language l, script s, region r) : lang{l}, scpt{s}, regn{r} {}
     constexpr language get_language() const { return lang; }
@@ -59754,11 +60246,13 @@ public:
                regn.get_value() == 0;
     }
 #ifndef UNI_ALGO_DISABLE_SYSTEM_LOCALE
+#ifndef UNI_ALGO_STATIC_DATA
     static locale system() { return detail::locale_system(); }
 #ifdef UNI_ALGO_EXPERIMENTAL
     static locale thread() { return detail::locale_thread(); }
     static void thread_reinit() { detail::locale_thread_reinit(); }
 #endif // UNI_ALGO_EXPERIMENTAL
+#endif // UNI_ALGO_STATIC_DATA
 #endif // UNI_ALGO_DISABLE_SYSTEM_LOCALE
 #ifdef UNI_ALGO_EXPERIMENTAL
     constexpr void normalize()
@@ -59893,7 +60387,7 @@ public:
 
 
 #ifdef UNI_ALGO_DISABLE_CASE
-#  error "Case module is disabled via define UNI_ALGO_DISABLE_CASE"
+#error "Case module is disabled via define UNI_ALGO_DISABLE_CASE"
 #endif
 
 #include <type_traits>
@@ -59903,14 +60397,15 @@ public:
 
 //!#include "config.h"
 //!#include "version.h"
+
+// Clang-Tidy thinks that locale.h form C is included here
+// NOLINTNEXTLINE(modernize-deprecated-headers, hicpp-deprecated-headers)
 //!#include "locale.h"
 
 //!#include "impl/impl_case.h"
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
 //!#include "impl/impl_case_locale.h"
 #endif
-
-// For info about defines see uni_cpp_convert.h
 
 namespace uni {
 
@@ -59932,90 +60427,105 @@ private:
 
 namespace detail {
 
-template<typename DST, typename SRC, size_t SZ,
+template<typename Dst, typename Alloc, typename Src, size_t SizeX,
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FNMAP)(typename SRC::const_pointer, typename SRC::const_pointer, typename DST::pointer, int, char32_t)>
+    size_t(*FnMap)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer, int, char32_t)>
 #else
-    size_t(*FNMAP)(typename SRC::const_iterator, typename SRC::const_iterator, typename DST::iterator, int, char32_t)>
+    size_t(*FnMap)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator, int, char32_t)>
 #endif
-DST t_map(SRC source, int mode, char32_t loc = 0)
+Dst t_map(const Alloc& alloc, Src src, int mode, char32_t loc = 0)
 {
-    DST destination;
+    Dst dst{alloc};
 
-    std::size_t length = source.size();
+    std::size_t length = src.size();
 
     if (length)
     {
-        destination.resize(length * SZ);
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        destination.resize(FNMAP(source.data(), source.data() + source.size(), destination.data(), mode, loc));
+        if (length > dst.max_size() / SizeX) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
 #else
-        destination.resize(FNMAP(source.cbegin(), source.cend(), destination.begin(), mode, loc));
+            std::abort();
 #endif
-#ifndef UNI_ALGO_DISABLE_CPP_SHRINK_TO_FIT
-        destination.shrink_to_fit();
+        }
+
+        dst.resize(length * SizeX);
+#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
+        dst.resize(FnMap(src.data(), src.data() + src.size(), dst.data(), mode, loc));
+#else
+        dst.resize(FnMap(src.cbegin(), src.cend(), dst.begin(), mode, loc));
+#endif
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
 #endif
     }
 
-    return destination;
+    return dst;
 }
 
 } // namespace detail
 
 namespace cases {
 
-template<typename UTF8>
-std::basic_string<UTF8> to_lowercase_utf8(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_lowercase_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_map<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(source,
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
             detail::impl_case_map_mode_lowercase);
 }
-template<typename UTF16>
-std::basic_string<UTF16> to_lowercase_utf16(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_lowercase_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_map<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(source,
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
             detail::impl_case_map_mode_lowercase);
 }
-template<typename UTF8>
-std::basic_string<UTF8> to_uppercase_utf8(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_uppercase_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_map<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(source,
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
             detail::impl_case_map_mode_uppercase);
 }
-template<typename UTF16>
-std::basic_string<UTF16> to_uppercase_utf16(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_uppercase_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_map<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(source,
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
             detail::impl_case_map_mode_uppercase);
 }
-template<typename UTF8>
-std::basic_string<UTF8> to_casefold_utf8(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_casefold_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_map<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(source,
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
             detail::impl_case_map_mode_casefold);
 }
-template<typename UTF16>
-std::basic_string<UTF16> to_casefold_utf16(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_casefold_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_map<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(source,
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
             detail::impl_case_map_mode_casefold);
 }
 
@@ -60059,40 +60569,44 @@ inline std::wstring to_casefold_utf16(std::wstring_view source)
 #endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-template<typename UTF8>
-std::basic_string<UTF8> to_lowercase_utf8(std::basic_string_view<UTF8> source, const uni::locale& locale)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_lowercase_utf8(std::basic_string_view<UTF8> source, const uni::locale& locale, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_map<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(source,
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(alloc, source,
             detail::impl_case_map_mode_lowercase, static_cast<char32_t>(locale.get_language()));
 }
-template<typename UTF16>
-std::basic_string<UTF16> to_lowercase_utf16(std::basic_string_view<UTF16> source, const uni::locale& locale)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_lowercase_utf16(std::basic_string_view<UTF16> source, const uni::locale& locale, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_map<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(source,
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(alloc, source,
             detail::impl_case_map_mode_lowercase, static_cast<char32_t>(locale.get_language()));
 }
-template<typename UTF8>
-std::basic_string<UTF8> to_uppercase_utf8(std::basic_string_view<UTF8> source, const uni::locale& locale)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_uppercase_utf8(std::basic_string_view<UTF8> source, const uni::locale& locale, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_map<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(source,
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(alloc, source,
             detail::impl_case_map_mode_uppercase, static_cast<char32_t>(locale.get_language()));
 }
-template<typename UTF16>
-std::basic_string<UTF16> to_uppercase_utf16(std::basic_string_view<UTF16> source, const uni::locale& locale)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_uppercase_utf16(std::basic_string_view<UTF16> source, const uni::locale& locale, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_map<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(source,
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(alloc, source,
             detail::impl_case_map_mode_uppercase, static_cast<char32_t>(locale.get_language()));
 }
 inline std::string to_lowercase_utf8(std::string_view source, const uni::locale& locale)
@@ -60124,22 +60638,24 @@ inline std::wstring to_uppercase_utf16(std::wstring_view source, const uni::loca
 #endif // UNI_ALGO_DISABLE_FULL_CASE
 
 #ifndef UNI_ALGO_DISABLE_BREAK_WORD
-template<typename UTF8>
-std::basic_string<UTF8> to_titlecase_utf8(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_titlecase_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_map<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(source,
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
             detail::impl_case_map_mode_titlecase);
 }
-template<typename UTF16>
-std::basic_string<UTF16> to_titlecase_utf16(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_titlecase_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_map<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(source,
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
             detail::impl_case_map_mode_titlecase);
 }
 inline std::string to_titlecase_utf8(std::string_view source)
@@ -60157,22 +60673,24 @@ inline std::wstring to_titlecase_utf16(std::wstring_view source)
 }
 #endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-template<typename UTF8>
-std::basic_string<UTF8> to_titlecase_utf8(std::basic_string_view<UTF8> source, const uni::locale& locale)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_titlecase_utf8(std::basic_string_view<UTF8> source, const uni::locale& locale, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_map<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(source,
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(alloc, source,
             detail::impl_case_map_mode_titlecase, static_cast<char32_t>(locale.get_language()));
 }
-template<typename UTF16>
-std::basic_string<UTF16> to_titlecase_utf16(std::basic_string_view<UTF16> source, const uni::locale& locale)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_titlecase_utf16(std::basic_string_view<UTF16> source, const uni::locale& locale, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_map<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(source,
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(alloc, source,
             detail::impl_case_map_mode_titlecase, static_cast<char32_t>(locale.get_language()));
 }
 inline std::string to_titlecase_utf8(std::string_view source, const uni::locale& locale)
@@ -60335,33 +60853,35 @@ inline uni::search search_utf16(std::wstring_view string1, std::wstring_view str
 
 #ifdef UNI_ALGO_EXPERIMENTAL
 #ifndef UNI_ALGO_DISABLE_COLLATE
-template<typename UTF8>
-std::string utf8_sortkey(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<char>>
+std::basic_string<char, std::char_traits<char>, Alloc>
+sortkey_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_map<std::string, std::basic_string_view<UTF8>,
-            detail::impl_x_case_sortkey_utf8, detail::impl_case_sortkey_loc_utf8>(source, false);
+    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_sortkey_utf8, detail::impl_case_sortkey_loc_utf8>(alloc, source, false);
 }
-template<typename UTF16>
-std::string utf16_sortkey(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<char>>
+std::basic_string<char, std::char_traits<char>, Alloc>
+utf16_sortkey(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_map<std::string, std::basic_string_view<UTF16>,
-            detail::impl_x_case_sortkey_utf16, detail::impl_case_sortkey_loc_utf16>(source, false);
+    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_sortkey_utf16, detail::impl_case_sortkey_loc_utf16>(alloc, source, false);
 }
-inline std::string utf8_sortkey(std::string_view source)
+inline std::string sortkey_utf8(std::string_view source)
 {
-    return utf8_sortkey<char>(source);
+    return sortkey_utf8<char>(source);
 }
 inline std::string utf16_sortkey(std::u16string_view source)
 {
-    return utf16_sortkey<char16_t>(source);
+    return sortkey_utf16<char16_t>(source);
 }
-inline std::string utf16_sortkey(std::wstring_view source)
+inline std::string sortkey_utf16(std::wstring_view source)
 {
-    return utf16_sortkey<wchar_t>(source);
+    return sortkey_utf16<wchar_t>(source);
 }
 #endif // UNI_ALGO_DISABLE_COLLATE
 #endif // UNI_ALGO_EXPERIMENTAL
@@ -60510,33 +61030,35 @@ inline uni::search search_utf16(std::wstring_view string1, std::wstring_view str
 #ifdef UNI_ALGO_EXPERIMENTAL
 
 #ifndef UNI_ALGO_DISABLE_COLLATE
-template<typename UTF8>
-std::string utf8_sortkey(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<char>>
+std::basic_string<char, std::char_traits<char>, Alloc>
+sortkey_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_map<std::string, std::basic_string_view<UTF8>,
-            detail::impl_x_case_sortkey_utf8, detail::impl_case_sortkey_loc_utf8>(source, true);
+    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_sortkey_utf8, detail::impl_case_sortkey_loc_utf8>(alloc, source, true);
 }
-template<typename UTF16>
-std::string utf16_sortkey(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<char>>
+std::basic_string<char, std::char_traits<char>, Alloc>
+sortkey_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_map<std::string, std::basic_string_view<UTF16>,
-            detail::impl_x_case_sortkey_utf16, detail::impl_case_sortkey_loc_utf16>(source, true);
+    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_sortkey_utf16, detail::impl_case_sortkey_loc_utf16>(alloc, source, true);
 }
-inline std::string utf8_sortkey(std::string_view source)
+inline std::string sortkey_utf8(std::string_view source)
 {
-    return utf8_sortkey<char>(source);
+    return sortkey_utf8<char>(source);
 }
-inline std::string utf16_sortkey(std::u16string_view source)
+inline std::string sortkey_utf16(std::u16string_view source)
 {
-    return utf16_sortkey<char16_t>(source);
+    return sortkey_utf16<char16_t>(source);
 }
-inline std::string utf16_sortkey(std::wstring_view source)
+inline std::string sortkey_utf16(std::wstring_view source)
 {
-    return utf16_sortkey<wchar_t>(source);
+    return sortkey_utf16<wchar_t>(source);
 }
 #endif // UNI_ALGO_DISABLE_COLLATE
 
@@ -60727,51 +61249,51 @@ inline char32_t to_simple_titlecase(char32_t c) noexcept
 
 inline std::u32string to_lowercase_u32(char32_t c)
 {
-    std::u32string destination;
-    destination.resize(3); // TODO: Magic number
+    std::u32string dst;
+    dst.resize(3); // TODO: Magic number
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    destination.resize(detail::impl_case_to_lowercase(c, destination.data()));
+    dst.resize(detail::impl_case_to_lowercase(c, dst.data()));
 #else
-    destination.resize(detail::impl_case_to_lowercase(c, destination.begin()));
+    dst.resize(detail::impl_case_to_lowercase(c, dst.begin()));
 #endif
-    return destination;
+    return dst;
 }
 
 inline std::u32string to_uppercase_u32(char32_t c)
 {
-    std::u32string destination;
-    destination.resize(3); // TODO: Magic number
+    std::u32string dst;
+    dst.resize(3); // TODO: Magic number
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    destination.resize(detail::impl_case_to_uppercase(c, destination.data()));
+    dst.resize(detail::impl_case_to_uppercase(c, dst.data()));
 #else
-    destination.resize(detail::impl_case_to_uppercase(c, destination.begin()));
+    dst.resize(detail::impl_case_to_uppercase(c, dst.begin()));
 #endif
-    return destination;
+    return dst;
 }
 
 inline std::u32string to_casefold_u32(char32_t c)
 {
-    std::u32string destination;
-    destination.resize(3); // TODO: Magic number
+    std::u32string dst;
+    dst.resize(3); // TODO: Magic number
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    destination.resize(detail::impl_case_to_casefold(c, destination.data()));
+    dst.resize(detail::impl_case_to_casefold(c, dst.data()));
 #else
-    destination.resize(detail::impl_case_to_casefold(c, destination.begin()));
+    dst.resize(detail::impl_case_to_casefold(c, dst.begin()));
 #endif
-    return destination;
+    return dst;
 }
 
 #ifndef UNI_ALGO_DISABLE_BREAK_WORD
 inline std::u32string to_titlecase_u32(char32_t c)
 {
-    std::u32string destination;
-    destination.resize(3); // TODO: Magic number
+    std::u32string dst;
+    dst.resize(3); // TODO: Magic number
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    destination.resize(detail::impl_case_to_titlecase(c, destination.data()));
+    dst.resize(detail::impl_case_to_titlecase(c, dst.data()));
 #else
-    destination.resize(detail::impl_case_to_titlecase(c, destination.begin()));
+    dst.resize(detail::impl_case_to_titlecase(c, dst.begin()));
 #endif
-    return destination;
+    return dst;
 }
 #endif // UNI_ALGO_DISABLE_BREAK_WORD
 
@@ -60786,7 +61308,7 @@ inline std::u32string to_titlecase_u32(char32_t c)
 
 
 #ifdef UNI_ALGO_DISABLE_PROP
-#  error "Property module is disabled via UNI_ALGO_DISABLE_PROP"
+#error "Property module is disabled via define UNI_ALGO_DISABLE_PROP"
 #endif
 
 #include <type_traits>
@@ -61113,7 +61635,7 @@ inline bool is_control(const prop& p) noexcept
 
 
 #ifdef UNI_ALGO_DISABLE_NORM
-#  error "Normalization module is disabled via define UNI_ALGO_DISABLE_NORM"
+#error "Normalization module is disabled via define UNI_ALGO_DISABLE_NORM"
 #endif
 
 #include <type_traits>
@@ -61127,38 +61649,45 @@ inline bool is_control(const prop& p) noexcept
 
 //!#include "impl/impl_norm.h"
 
-// For info about defines see uni_cpp_convert.h
-
 namespace uni {
 
 namespace detail {
 
-template<typename DST, typename SRC, size_t SZ,
+template<typename Dst, typename Alloc, typename Src, size_t SizeX,
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FNNORM)(typename SRC::const_pointer, typename SRC::const_pointer, typename DST::pointer)>
+    size_t(*FnNorm)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer)>
 #else
-    size_t(*FNNORM)(typename SRC::const_iterator, typename SRC::const_iterator, typename DST::iterator)>
+    size_t(*FnNorm)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator)>
 #endif
-DST t_norm(SRC source)
+Dst t_norm(const Alloc& alloc, Src src)
 {
-    DST destination;
+    Dst dst{alloc};
 
-    std::size_t length = source.size();
+    std::size_t length = src.size();
 
     if (length)
     {
-        destination.resize(length * SZ);
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        destination.resize(FNNORM(source.data(), source.data() + source.size(), destination.data()));
+        if (length > dst.max_size() / SizeX) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
 #else
-        destination.resize(FNNORM(source.cbegin(), source.cend(), destination.begin()));
+            std::abort();
 #endif
-#ifndef UNI_ALGO_DISABLE_CPP_SHRINK_TO_FIT
-        destination.shrink_to_fit();
+        }
+
+        dst.resize(length * SizeX);
+#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
+        dst.resize(FnNorm(src.data(), src.data() + src.size(), dst.data()));
+#else
+        dst.resize(FnNorm(src.cbegin(), src.cend(), dst.begin()));
+#endif
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
 #endif
     }
 
-    return destination;
+    return dst;
 }
 
 // For NFKC and NFKD it is ineffective to preallocate a string because max decomposition is 11/18
@@ -61188,36 +61717,44 @@ public:
 
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 
-template<typename DST, typename SRC,
+template<typename Dst, typename Alloc, typename Src,
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FNNORM)(typename SRC::const_pointer, typename SRC::const_pointer, proxy_it_out<std::back_insert_iterator<DST>>)>
+    size_t(*FnNorm)(typename Src::const_pointer, typename Src::const_pointer, proxy_it_out<std::back_insert_iterator<Dst>>)>
 #else
-    size_t(*FNNORM)(typename SRC::const_iterator, typename SRC::const_iterator, proxy_it_out<std::back_insert_iterator<DST>>)>
+    size_t(*FnNorm)(typename Src::const_iterator, typename Src::const_iterator, proxy_it_out<std::back_insert_iterator<Dst>>)>
 #endif
-DST t_norm2(SRC source)
+Dst t_norm2(const Alloc& alloc, Src src)
 {
-    DST destination;
+    Dst dst{alloc};
 
-    std::size_t length = source.size();
+    std::size_t length = src.size();
 
-    //if (length && length <= destination.max_size() / 3)
     if (length)
     {
-        destination.reserve(length * 3 / 2);
+        if (length > dst.max_size() / 3) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
+#else
+            std::abort();
+#endif
+        }
 
-        proxy_it_out<std::back_insert_iterator<DST>> it_out(std::back_inserter(destination));
+        dst.reserve(length * 3 / 2);
+
+        proxy_it_out<std::back_insert_iterator<Dst>> it_out{std::back_inserter(dst)};
 
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        FNNORM(source.data(), source.data() + source.size(), it_out);
+        FnNorm(src.data(), src.data() + src.size(), it_out);
 #else
-        FNNORM(source.cbegin(), source.cend(), it_out);
+        FnNorm(src.cbegin(), src.cend(), it_out);
 #endif
-#ifndef UNI_ALGO_DISABLE_CPP_SHRINK_TO_FIT
-        destination.shrink_to_fit();
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
 #endif
     }
 
-    return destination;
+    return dst;
 }
 
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
@@ -61226,101 +61763,111 @@ DST t_norm2(SRC source)
 
 namespace norm {
 
-template<typename UTF8>
-std::basic_string<UTF8> to_nfc_utf8(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_nfc_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_norm<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_norm_to_nfc_utf8, detail::impl_norm_to_nfc_utf8>(source);
+    return detail::t_norm<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_norm_to_nfc_utf8, detail::impl_norm_to_nfc_utf8>(alloc, source);
 }
 
-template<typename UTF8>
-std::basic_string<UTF8> to_nfd_utf8(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_nfd_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_norm<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_norm_to_nfd_utf8, detail::impl_norm_to_nfd_utf8>(source);
+    return detail::t_norm<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_norm_to_nfd_utf8, detail::impl_norm_to_nfd_utf8>(alloc, source);
 }
 
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-template<typename UTF8>
-std::basic_string<UTF8> to_nfkc_utf8(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_nfkc_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_norm2<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_norm_to_nfkc_utf8>(source);
+    return detail::t_norm2<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_norm_to_nfkc_utf8>(alloc, source);
 }
 
-template<typename UTF8>
-std::basic_string<UTF8> to_nfkd_utf8(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_nfkd_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_norm2<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_norm_to_nfkd_utf8>(source);
+    return detail::t_norm2<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_norm_to_nfkd_utf8>(alloc, source);
 }
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 #ifndef UNI_ALGO_DISABLE_PROP
-template<typename UTF8>
-std::basic_string<UTF8> to_unaccent_utf8(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_unaccent_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF8>);
 
-    return detail::t_norm<std::basic_string<UTF8>, std::basic_string_view<UTF8>,
-            detail::impl_x_norm_to_unaccent_utf8, detail::impl_norm_to_unaccent_utf8>(source);
+    return detail::t_norm<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_norm_to_unaccent_utf8, detail::impl_norm_to_unaccent_utf8>(alloc, source);
 }
 #endif // UNI_ALGO_DISABLE_PROP
 
-template<typename UTF16>
-std::basic_string<UTF16> to_nfc_utf16(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_nfc_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_norm<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_norm_to_nfc_utf16, detail::impl_norm_to_nfc_utf16>(source);
+    return detail::t_norm<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_norm_to_nfc_utf16, detail::impl_norm_to_nfc_utf16>(alloc, source);
 }
 
-template<typename UTF16>
-std::basic_string<UTF16> to_nfd_utf16(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_nfd_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_norm<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_norm_to_nfd_utf16, detail::impl_norm_to_nfd_utf16>(source);
+    return detail::t_norm<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_norm_to_nfd_utf16, detail::impl_norm_to_nfd_utf16>(alloc, source);
 }
 
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-template<typename UTF16>
-std::basic_string<UTF16> to_nfkc_utf16(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_nfkc_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_norm2<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_norm_to_nfkc_utf16>(source);
+    return detail::t_norm2<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_norm_to_nfkc_utf16>(alloc, source);
 }
 
-template<typename UTF16>
-std::basic_string<UTF16> to_nfkd_utf16(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_nfkd_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_norm2<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_norm_to_nfkd_utf16>(source);
+    return detail::t_norm2<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_norm_to_nfkd_utf16>(alloc, source);
 }
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 #ifndef UNI_ALGO_DISABLE_PROP
-template<typename UTF16>
-std::basic_string<UTF16> to_unaccent_utf16(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_unaccent_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
     static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
 
-    return detail::t_norm<std::basic_string<UTF16>, std::basic_string_view<UTF16>,
-            detail::impl_x_norm_to_unaccent_utf16, detail::impl_norm_to_unaccent_utf16>(source);
+    return detail::t_norm<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_norm_to_unaccent_utf16, detail::impl_norm_to_unaccent_utf16>(alloc, source);
 }
 #endif // UNI_ALGO_DISABLE_PROP
 
@@ -61649,14 +62196,14 @@ inline bool is_nfkd_utf8(std::u8string_view source)
 namespace ranges::norm {
 
 template<class Range>
-class nfc_view : public detail::ranges::view_base
+class nfc_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class nfc
     {
-        static_assert(std::is_integral_v<detail::ranges::iter_value_t<Iter>> &&
-                      sizeof(detail::ranges::iter_value_t<Iter>) >= sizeof(char32_t),
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
                       "norm::nfc view requires char32_t range");
 
     private:
@@ -61711,8 +62258,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const nfc& x) { return !x.stream_end; }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     nfc<iter_t, sent_t> cached_begin_value;
@@ -61742,14 +62289,14 @@ public:
 };
 
 template<class Range>
-class nfd_view : public detail::ranges::view_base
+class nfd_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class nfd
     {
-        static_assert(std::is_integral_v<detail::ranges::iter_value_t<Iter>> &&
-                      sizeof(detail::ranges::iter_value_t<Iter>) >= sizeof(char32_t),
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
                       "norm::nfd view requires char32_t range");
 
     private:
@@ -61804,8 +62351,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const nfd& x) { return !x.stream_end; }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     nfd<iter_t, sent_t> cached_begin_value;
@@ -61837,14 +62384,14 @@ public:
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 
 template<class Range>
-class nfkc_view : public detail::ranges::view_base
+class nfkc_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class nfkc
     {
-        static_assert(std::is_integral_v<detail::ranges::iter_value_t<Iter>> &&
-                      sizeof(detail::ranges::iter_value_t<Iter>) >= sizeof(char32_t),
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
                       "norm::nfkc view requires char32_t range");
 
     private:
@@ -61899,8 +62446,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const nfkc& x) { return !x.stream_end; }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     nfkc<iter_t, sent_t> cached_begin_value;
@@ -61930,14 +62477,14 @@ public:
 };
 
 template<class Range>
-class nfkd_view : public detail::ranges::view_base
+class nfkd_view : public detail::rng::view_base
 {
 private:
     template<class Iter, class Sent>
     class nfkd
     {
-        static_assert(std::is_integral_v<detail::ranges::iter_value_t<Iter>> &&
-                      sizeof(detail::ranges::iter_value_t<Iter>) >= sizeof(char32_t),
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
                       "norm::nfkd view requires char32_t range");
 
     private:
@@ -61992,8 +62539,8 @@ private:
         friend uaiw_constexpr bool operator!=(uni::sentinel_t, const nfkd& x) { return !x.stream_end; }
     };
 
-    using iter_t = detail::ranges::iterator_t<Range>;
-    using sent_t = detail::ranges::sentinel_t<Range>;
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
     nfkd<iter_t, sent_t> cached_begin_value;
@@ -62025,26 +62572,27 @@ public:
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 template<class Range>
-nfc_view(Range&&) -> nfc_view<uni::views::all_t<Range>>;
+nfc_view(Range&&) -> nfc_view<views::all_t<Range>>;
 template<class Range>
-nfd_view(Range&&) -> nfd_view<uni::views::all_t<Range>>;
+nfd_view(Range&&) -> nfd_view<views::all_t<Range>>;
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 template<class Range>
-nfkc_view(Range&&) -> nfkc_view<uni::views::all_t<Range>>;
+nfkc_view(Range&&) -> nfkc_view<views::all_t<Range>>;
 template<class Range>
-nfkd_view(Range&&) -> nfkd_view<uni::views::all_t<Range>>;
+nfkd_view(Range&&) -> nfkd_view<views::all_t<Range>>;
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 } // namespace ranges::norm
 
-namespace detail {
+namespace detail::rng {
 
 /* NFC_VIEW */
 
 struct adaptor_nfc
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::norm::nfc_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::norm::nfc_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_nfc& a) { return a(std::forward<R>(r)); }
@@ -62054,7 +62602,8 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_nfc& a) { return a(std::forwa
 struct adaptor_nfd
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::norm::nfd_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::norm::nfd_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_nfd& a) { return a(std::forward<R>(r)); }
@@ -62066,7 +62615,8 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_nfd& a) { return a(std::forwa
 struct adaptor_nfkc
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::norm::nfkc_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::norm::nfkc_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_nfkc& a) { return a(std::forward<R>(r)); }
@@ -62076,22 +62626,23 @@ uaiw_constexpr auto operator|(R&& r, const adaptor_nfkc& a) { return a(std::forw
 struct adaptor_nfkd
 {
     template<class R>
-    uaiw_constexpr auto operator()(R&& r) const { return uni::ranges::norm::nfkd_view{std::forward<R>(r)}; }
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::norm::nfkd_view{std::forward<R>(r)}; }
 };
 template<class R>
 uaiw_constexpr auto operator|(R&& r, const adaptor_nfkd& a) { return a(std::forward<R>(r)); }
 
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
-} // namespace detail
+} // namespace detail::rng
 
 namespace ranges::views::norm {
 
-inline constexpr detail::adaptor_nfc nfc;
-inline constexpr detail::adaptor_nfd nfd;
+inline constexpr detail::rng::adaptor_nfc nfc;
+inline constexpr detail::rng::adaptor_nfd nfd;
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline constexpr detail::adaptor_nfkc nfkc;
-inline constexpr detail::adaptor_nfkd nfkd;
+inline constexpr detail::rng::adaptor_nfkc nfkc;
+inline constexpr detail::rng::adaptor_nfkd nfkd;
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 } // namespace ranges::views::norm
@@ -62144,45 +62695,45 @@ public:
 
 inline char32_t to_compose(char32_t c1, char32_t c2) noexcept
 {
-    return uni::detail::impl_norm_to_compose(c1, c2);
+    return detail::impl_norm_to_compose(c1, c2);
 }
 
 inline std::u32string to_decompose_u32(char32_t c)
 {
-    std::u32string destination;
-    destination.resize(uni::detail::impl_x_norm_to_nfd_utf16); // TODO: Better value
+    std::u32string dst;
+    dst.resize(detail::impl_x_norm_to_nfd_utf16); // TODO: Better value
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    destination.resize(detail::impl_norm_to_decompose(c, destination.data()));
+    dst.resize(detail::impl_norm_to_decompose(c, dst.data()));
 #else
-    destination.resize(detail::impl_norm_to_decompose(c, destination.begin()));
+    dst.resize(detail::impl_norm_to_decompose(c, dst.begin()));
 #endif
-    return destination;
+    return dst;
 }
 
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 inline std::u32string to_decompose_compat_u32(char32_t c)
 {
-    std::u32string destination;
-    destination.resize(uni::detail::impl_x_norm_to_nfkd_utf16); // TODO: Better value
+    std::u32string dst;
+    dst.resize(detail::impl_x_norm_to_nfkd_utf16); // TODO: Better value
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    destination.resize(detail::impl_norm_to_decompose_compat(c, destination.data()));
+    dst.resize(detail::impl_norm_to_decompose_compat(c, dst.data()));
 #else
-    destination.resize(detail::impl_norm_to_decompose_compat(c, destination.begin()));
+    dst.resize(detail::impl_norm_to_decompose_compat(c, dst.begin()));
 #endif
-    return destination;
+    return dst;
 }
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 inline std::u32string to_decompose_hangul_u32(char32_t c)
 {
-    std::u32string destination;
-    destination.resize(uni::detail::impl_x_norm_to_nfd_utf16); // TODO: Better value
+    std::u32string dst;
+    dst.resize(detail::impl_x_norm_to_nfd_utf16); // TODO: Better value
 #ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    destination.resize(detail::impl_norm_to_decompose_hangul(c, destination.data()));
+    dst.resize(detail::impl_norm_to_decompose_hangul(c, dst.data()));
 #else
-    destination.resize(detail::impl_norm_to_decompose_hangul(c, destination.begin()));
+    dst.resize(detail::impl_norm_to_decompose_hangul(c, dst.begin()));
 #endif
-    return destination;
+    return dst;
 }
 
 } // namespace codepoint
@@ -62373,52 +62924,62 @@ public:
 
 // Expose translit functions that use the translit view with the translit class above.
 
-namespace uni::translit {
+namespace unx::translit {
 
-template<typename UTF8>
-std::basic_string<UTF8> utf8_macedonian_to_latin_docs(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+macedonian_to_latin_docs_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
+    using namespace uni; // NOLINT(google-build-using-namespace)
+
     // Note that we use views from uni::ranges instead of adaptors from uni::views
     // because translit view is internal and doesn't have view adaptor
     // and we want to maximize the compilation speed.
 
     using tr = detail::translit::macedonian_to_latin_docs;
 
-    auto result = uni::detail::ranges::translit_view{uni::ranges::utf8_view{source}, tr::buf_func, tr::buf_size}
-                | uni::ranges::to_utf8_reserve<std::basic_string<UTF8>>(source.size());
+    auto result = detail::rng::translit_view{ranges::utf8_view{source}, tr::buf_func, tr::buf_size}
+        | ranges::to_utf8_reserve<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>>(source.size(), alloc);
 
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
     result.shrink_to_fit();
+#endif
     return result;
 }
-template<typename UTF16>
-std::basic_string<UTF16> utf16_macedonian_to_latin_docs(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+macedonian_to_latin_docs_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
+    using namespace uni; // NOLINT(google-build-using-namespace)
+
     using tr = detail::translit::macedonian_to_latin_docs;
 
-    auto result = uni::detail::ranges::translit_view{uni::ranges::utf16_view{source}, tr::buf_func, tr::buf_size}
-                | uni::ranges::to_utf16_reserve<std::basic_string<UTF16>>(source.size());
+    auto result = detail::rng::translit_view{ranges::utf16_view{source}, tr::buf_func, tr::buf_size}
+        | ranges::to_utf16_reserve<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>>(source.size(), alloc);
 
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
     result.shrink_to_fit();
+#endif
     return result;
 }
-inline std::string utf8_macedonian_to_latin_docs(std::string_view source)
+inline std::string macedonian_to_latin_docs_utf8(std::string_view source)
 {
-    return utf8_macedonian_to_latin_docs<char>(source);
+    return macedonian_to_latin_docs_utf8<char>(source);
 }
-inline std::u16string utf16_macedonian_to_latin_docs(std::u16string_view source)
+inline std::u16string macedonian_to_latin_docs_utf16(std::u16string_view source)
 {
-    return utf16_macedonian_to_latin_docs<char16_t>(source);
+    return macedonian_to_latin_docs_utf16<char16_t>(source);
 }
 #if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring utf16_macedonian_to_latin_docs(std::wstring_view source)
+inline std::wstring macedonian_to_latin_docs_utf16(std::wstring_view source)
 {
-    return utf16_macedonian_to_latin_docs<wchar_t>(source);
+    return macedonian_to_latin_docs_utf16<wchar_t>(source);
 }
 #endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
 #ifdef __cpp_lib_char8_t
-inline std::u8string utf8_macedonian_to_latin_docs(std::u8string_view source)
+inline std::u8string macedonian_to_latin_docs_utf8(std::u8string_view source)
 {
-    return utf8_macedonian_to_latin_docs<char8_t>(source);
+    return macedonian_to_latin_docs_utf8<char8_t>(source);
 }
 #endif // __cpp_lib_char8_t
 
@@ -62686,54 +63247,64 @@ public:
 
 } // namespace uni::detail::translit
 
-namespace uni::translit {
+namespace unx::translit {
 
-template<typename UTF8>
-std::basic_string<UTF8> utf8_japanese_kana_to_romaji_hepburn(std::basic_string_view<UTF8> source)
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+japanese_kana_to_romaji_hepburn_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
+    using namespace uni; // NOLINT(google-build-using-namespace)
+
     using tr = detail::translit::japanese_kana_to_romaji_hepburn;
 
     bool prev = false;
     auto func = [&prev](detail::translit::buffer& buf) { return tr::buf_func(buf, prev); };
 
-    auto result = uni::detail::ranges::translit_view{uni::ranges::utf8_view{source}, func, tr::buf_size}
-                | uni::ranges::to_utf8_reserve<std::basic_string<UTF8>>(source.size());
+    auto result = detail::rng::translit_view{ranges::utf8_view{source}, func, tr::buf_size}
+        | ranges::to_utf8_reserve<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>>(source.size(), alloc);
 
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
     result.shrink_to_fit();
+#endif
     return result;
 }
-template<typename UTF16>
-std::basic_string<UTF16> utf16_japanese_kana_to_romaji_hepburn(std::basic_string_view<UTF16> source)
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+japanese_kana_to_romaji_hepburn_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
+    using namespace uni; // NOLINT(google-build-using-namespace)
+
     using tr = detail::translit::japanese_kana_to_romaji_hepburn;
 
     bool prev = false;
     auto func = [&prev](detail::translit::buffer& buf) { return tr::buf_func(buf, prev); };
 
-    auto result = uni::detail::ranges::translit_view{uni::ranges::utf16_view{source}, func, tr::buf_size}
-                | uni::ranges::to_utf16_reserve<std::basic_string<UTF16>>(source.size());
+    auto result = detail::rng::translit_view{ranges::utf16_view{source}, func, tr::buf_size}
+        | ranges::to_utf16_reserve<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>>(source.size(), alloc);
 
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
     result.shrink_to_fit();
+#endif
     return result;
 }
-inline std::string utf8_japanese_kana_to_romaji_hepburn(std::string_view source)
+inline std::string japanese_kana_to_romaji_hepburn_utf8(std::string_view source)
 {
-    return utf8_japanese_kana_to_romaji_hepburn<char>(source);
+    return japanese_kana_to_romaji_hepburn_utf8<char>(source);
 }
-inline std::u16string utf16_japanese_kana_to_romaji_hepburn(std::u16string_view source)
+inline std::u16string japanese_kana_to_romaji_hepburn_utf16(std::u16string_view source)
 {
-    return utf16_japanese_kana_to_romaji_hepburn<char16_t>(source);
+    return japanese_kana_to_romaji_hepburn_utf16<char16_t>(source);
 }
 #if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring utf16_japanese_kana_to_romaji_hepburn(std::wstring_view source)
+inline std::wstring japanese_kana_to_romaji_hepburn_utf16(std::wstring_view source)
 {
-    return utf16_japanese_kana_to_romaji_hepburn<wchar_t>(source);
+    return japanese_kana_to_romaji_hepburn_utf16<wchar_t>(source);
 }
 #endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
 #ifdef __cpp_lib_char8_t
 inline std::u8string utf8_japanese_kana_to_romaji_hepburn(std::u8string_view source)
 {
-    return utf8_japanese_kana_to_romaji_hepburn<char8_t>(source);
+    return japanese_kana_to_romaji_hepburn_utf8<char8_t>(source);
 }
 #endif // __cpp_lib_char8_t
 
