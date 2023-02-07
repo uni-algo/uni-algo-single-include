@@ -10,6 +10,8 @@
 #include <type_traits>
 #include <cstddef>
 
+#include <array>
+
 #define UNI_ALGO_STATIC_DATA
 #define UNI_ALGO_DISABLE_SYSTEM_LOCALE
 
@@ -19,7 +21,7 @@
 // (VERSION % 1000) is the patch version 0..255,
 // (VERSION / 1000 % 1000) is the minor version 0..255,
 // (VERSION / 1000000) is the major version 0..255.
-#define UNI_ALGO_CPP_LIB_VERSION 6000
+#define UNI_ALGO_CPP_LIB_VERSION 7000
 
 // AMALGAMATION: uni_algo/impl/impl_unicode_version.h
 
@@ -45,58 +47,57 @@
 // (VERSION / 1000 % 1000) is the minor version 0..255,
 // (VERSION / 1000000) is the major version 1..255.
 
-// Note that uni::version namespace can be used to get these values.
+// Note that una::version namespace can be used to get these values.
 
 // Note that you can just add the following defines to your project
 // instead of uncommenting the defines here.
 
 //#define UNI_ALGO_DISABLE_CASE
 // Disable Case module.
-// Reduces the size of the library by ~200 KB.
+// Reduces Unicode data size by ~200 KB.
 
 //#define UNI_ALGO_DISABLE_NORM
 // Disable Normalization module.
-// Reduces the size of the library by ~300 KB.
+// Reduces Unicode data size by ~300 KB.
 
 //#define UNI_ALGO_DISABLE_PROP
 // Disable Code Point Properties module.
-// Reduces the size of the library by ~35 KB.
+// Reduces Unicode data size by ~35 KB.
 // Note that if this module is disabled unaccent functions
 // in Normalization module will be disabled too.
 
 //#define UNI_ALGO_DISABLE_BREAK_GRAPHEME
 // Disable Break Grapheme module.
-// Reduces the size of the library by ~25 KB.
+// Reduces Unicode data size by ~25 KB.
 
 //#define UNI_ALGO_DISABLE_BREAK_WORD
 // Disable Break Word module.
-// Reduces the size of the library by ~35 KB.
+// Reduces Unicode data size by ~35 KB.
 // Note that if Break Word module is disabled title case functions
 // in Case module will be disabled too because it is needed for them.
 
 //#define UNI_ALGO_DISABLE_COLLATE
 // Disable collation functions (part of Case module).
-// Reduces the size of Case module by ~100 KB.
+// Reduces Unicode data size by ~100 KB.
 
 //#define UNI_ALGO_DISABLE_NFKC_NFKD
 // Disable NFKC and NFKD normalization forms (part of Normalization module).
 // These forms are rarely used and can be disabled.
-// Reduces the size of Normalization module by ~100 KB.
+// Reduces Unicode data size by ~100 KB.
+
+// ----------------------- ALL DEFINES BELOW THIS LINE DO NOT CHANGE UNICODE DATA SIZE ----------------------
+
+//#define UNI_ALGO_ENABLE_SAFE_LAYER
+// Force to enable safe layer even in release (enabled in debug by default).
 
 //#define UNI_ALGO_DISABLE_SYSTEM_LOCALE
-// Disable system locale facilities: uni::locale::system() function etc.
+// Disable system locale facilities: una::locale::system() function etc.
 
 //#define UNI_ALGO_DISABLE_SHRINK_TO_FIT
-// Most of functions do shrink_to_fit() call at the of a function by default
-// but if you use a custom allocator or want to maximize the performance
+// Most of functions do shrink_to_fit() call at the end of a function by default
+// but if you use a custom allocator or want to maximize the performance of the library
 // it might be better to disable it and do the call manually only when needed.
-
-//#define UNI_ALGO_DISABLE_CPP_ITERATORS
-// With this define pointers will be used instead of C++ iterators internally.
-// The only reason to use the define is to maximize performance in debug builds,
-// for example MSVC debug iterators are very slow.
-// Note that the define only affects some functions.
-// The define does not affect behaviour.
+// Note that ranges (una::ranges::to_utf8/to_utf16 and such) never do shring_to_fit() call.
 
 //#define UNI_ALGO_DISABLE_FULL_CASE
 // Note that this define can be deprecated in the future.
@@ -119,20 +120,29 @@
 // The defines can be used to build shared library
 // export must be defined when building and import when using.
 
-// DO NOT CHANGE ANYTHING BELOW THIS LINE
-
-#if (__cplusplus < 201703L && !defined(_MSVC_LANG)) || (defined(_MSVC_LANG) && _MSVC_LANG < 201703L)
-#error "C++17 or better is required"
-#endif
+// --------------------------------- DO NOT CHANGE ANYTHING BELOW THIS LINE ---------------------------------
 
 // All the comments below are not for users of the library
 
-namespace uni::detail {
+// This file must include only these 2 files
+// Low-level requires <cstddef> for size_t and such, static asserts here require <type_traits>
+// Note that most low-level modules also need type_array to be defined it's located in safe layer
+// that need to be included after config.h (this file) for such low-level modules.
+// Note that one extra include <version> below may be used in C++20 for proper constexpr detection.
+#include <cstddef> // size_t, nullptr_t
+#include <type_traits> // std::is_unsigned
+
+#if (__cplusplus < 201703L && !defined(_MSVC_LANG)) || (defined(_MSVC_LANG) && _MSVC_LANG < 201703L)
+#error "C++17 or higher is required"
+#endif
+
+namespace una::detail {
 // Never change these types except for tests.
 using type_codept = char32_t;
 using type_char8  = unsigned char;
 using type_char16 = char16_t;
 using type_char32 = char32_t;
+//using type_array = [std::array like]; // Defined in internal/safe_layer.h
 inline constexpr size_t impl_npos = static_cast<size_t>(-1);
 inline constexpr std::nullptr_t impl_nullptr = nullptr;
 // The types can be changed for tests without violating these static asserts.
@@ -149,8 +159,21 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 }
 
 // Define namespace that low-level will use
-#define UNI_ALGO_IMPL_NAMESPACE_BEGIN namespace uni::detail {
+#define UNI_ALGO_IMPL_NAMESPACE_BEGIN namespace una::detail {
 #define UNI_ALGO_IMPL_NAMESPACE_END }
+
+// Enable safe layer if it is forced with this define and in debug
+#ifndef UNI_ALGO_ENABLE_SAFE_LAYER
+#ifndef NDEBUG
+#define UNI_ALGO_ENABLE_SAFE_LAYER
+#endif
+#endif
+
+// Using any of the followings defines will disable a part of safe layer.
+// Use them only for perf testing to make sure safe layer doesn't mess things up.
+//#define UNI_ALGO_FORCE_CPP_ITERATORS // Force to use C++ iterators in low-level
+//#define UNI_ALGO_FORCE_C_POINTERS // Force to use C pointers in low-level
+//#define UNI_ALGO_FORCE_C_ARRAYS // Force to use C arrays in low-level
 
 // Define dllexport/dllimport for shared library
 #if defined(UNI_ALGO_DLL_EXPORT) && !defined(UNI_ALGO_STATIC_DATA)
@@ -170,8 +193,19 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 #define UNI_ALGO_DLL
 #endif
 
-// TODO: Disable constexpr for now it doesn't work properly in some cases
-#define uaiw_constexpr //constexpr
+// C++20 or higher and header-only version is required for constexpr library
+#if defined(UNI_ALGO_STATIC_DATA) && ((__cplusplus >= 202002L) || (_MSVC_LANG >= 202002L))
+// NOTE: This include is needed for __cpp_lib_constexpr_string below
+#include <version>
+#if (__cpp_constexpr >= 201907L) && defined(__cpp_lib_constexpr_string) \
+    && !(defined(__clang__) && defined(__GLIBCXX__)) // constexpr standard lib is broken in Clang with libstdc++
+#define UNI_ALGO_CONSTEXPR
+#define uaiw_constexpr constexpr
+#endif
+#endif
+#ifndef UNI_ALGO_CONSTEXPR
+#define uaiw_constexpr
+#endif
 
 //#define UNI_ALGO_EXPERIMENTAL // Enable experimental stuff for tests
 //#define UNI_ALGO_LOG_CPP_ITER // Enable logging for UTF-8/16 iterators
@@ -192,15 +226,219 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 //#define UNI_ALGO_TEST_CPP_THROW_ASSERT
 
 
+// AMALGAMATION: uni_algo/internal/safe_layer.h
+
+
+#include <cstdlib>
+#ifndef UNI_ALGO_ENABLE_SAFE_LAYER
+#include <array>
+#endif
+
+namespace una::detail {
+
+namespace safe {
+
+[[noreturn]] inline void kms() noexcept
+{
+    // Everything is lost, nothing can be done, kmsing is the only option.
+    // If we are inside this function then there is a critical bug exists in the library.
+    // If we will continue then we try to read or write to a memory that is not belong to us.
+    // Note that we cannot even throw an exception from here because we can be inside
+    // noexcept function or inside std::string::resize_and_overwrite and throwing from there is UB.
+    std::abort();
+}
+
+// ----------
+// SAFE ARRAY
+// ----------
+
+// Safe array is similar to std::array but with bound checks and more strict
+// so the compilation will break if the low-level won't follow the rules.
+
+template<typename T, std::size_t N>
+struct array
+{
+    static_assert(N != 0, "Low-level must never try to use 0 sized arrays");
+
+    static_assert(!std::is_integral_v<T> || // For multidimensional arrays
+                  std::is_same_v<T, char>           ||
+                  std::is_same_v<T, unsigned char>  ||
+                  std::is_same_v<T, unsigned short> ||
+                  std::is_same_v<T, char32_t>,
+                 "Low-level must never use disallowed types for arrays");
+
+    using value_type      = T;
+    using size_type       = std::size_t;
+    using difference_type = std::ptrdiff_t;
+    using reference       = value_type&;
+    using const_reference = const value_type&;
+    using pointer         = value_type*;
+    using const_pointer   = const value_type*;
+    using iterator        = value_type*;
+    using const_iterator  = const value_type*;
+
+    // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays, hicpp-avoid-c-arrays)
+    T internal_array[N];
+
+    constexpr reference operator[](size_type pos) noexcept
+    { if (pos >= N) kms(); return internal_array[pos]; }
+    constexpr const_reference operator[](size_type pos) const noexcept
+    { if (pos >= N) kms(); return internal_array[pos]; }
+    // Low-level must never use the folowing functions but they might be helpfull for tests
+    constexpr size_type size() const noexcept { return N; }
+    constexpr size_type max_size() const noexcept { return N; }
+    constexpr bool empty() const noexcept { return N == 0; }
+    constexpr pointer data() noexcept { return internal_array; }
+    constexpr const_pointer data() const noexcept { return internal_array; }
+    constexpr iterator begin() noexcept { return internal_array; }
+    constexpr const_iterator begin() const noexcept { return internal_array; }
+    constexpr iterator end() noexcept { return internal_array + N; }
+    constexpr const_iterator end() const noexcept { return internal_array + N; }
+    // Low-level must never try to copy arrays
+    // But this doesn't work without copy constructor and copy constructor breaks aggregate
+    // https://timsong-cpp.github.io/cppwp/n4659/dcl.init.aggr#1.1
+    //constexpr type_array& operator=(const type_array&) = delete;
+    // Low-level must never try to compare arrays so no comparison operators
+};
+static_assert(std::is_aggregate_v<safe::array<char, 1>>, "safe::array must be aggregate");
+
+// --------------
+// SAFE ITERATORS
+// --------------
+
+// Safe iterators only implement operators that the low-level uses
+// safe end iterator is only used as sentinel so no operators there.
+
+template<class Iter>
+class end
+{
+    template<class U> friend class in;
+private:
+    Iter it;
+public:
+    uaiw_constexpr end() = delete;
+    uaiw_constexpr explicit end(Iter iter) : it{iter} {}
+};
+
+template<class Iter>
+class in
+{
+private:
+    Iter it;
+#ifdef UNI_ALGO_ENABLE_SAFE_LAYER
+    Iter begin;
+    Iter end;
+public:
+    uaiw_constexpr explicit in(Iter iter, std::size_t size)
+        : it{iter}, begin{it}, end{it + static_cast<std::ptrdiff_t>(size)} {}
+    uaiw_constexpr decltype(*it) operator*() const { if (it < begin || it >= end) kms(); return *it; }
+#else
+public:
+    uaiw_constexpr explicit in(Iter iter, std::size_t) : it{iter} {}
+    uaiw_constexpr decltype(*it) operator*() const { return *it; }
+#endif
+    uaiw_constexpr in() = delete;
+    uaiw_constexpr in& operator++()
+    {
+        ++it;
+        return *this;
+    }
+    uaiw_constexpr in operator++(int)
+    {
+        in tmp = *this;
+        ++it;
+        return tmp;
+    }
+    uaiw_constexpr in& operator--()
+    {
+        --it;
+        return *this;
+    }
+    uaiw_constexpr in operator--(int)
+    {
+        in tmp = *this;
+        --it;
+        return tmp;
+    }
+    uaiw_constexpr in& operator+=(std::ptrdiff_t n)
+    {
+        it += n;
+        return *this;
+    }
+    uaiw_constexpr in& operator-=(std::ptrdiff_t n)
+    {
+        it -= n;
+        return *this;
+    }
+    friend uaiw_constexpr in operator+(in x, std::ptrdiff_t n)
+    {
+        x += n;
+        return x;
+    }
+    friend uaiw_constexpr in operator-(in x, std::ptrdiff_t n)
+    {
+        x -= n;
+        return x;
+    }
+    friend uaiw_constexpr std::ptrdiff_t operator-(const in& x, const in& y) { return x.it - y.it; }
+    friend uaiw_constexpr bool operator==(const in& x, const in& y) { return x.it == y.it; }
+    friend uaiw_constexpr bool operator!=(const in& x, const in& y) { return x.it != y.it; }
+    friend uaiw_constexpr bool operator>(const in& x, const in& y) { return x.it > y.it; }
+private:
+    static uaiw_constexpr const Iter& friend_it(const safe::end<Iter>& i) { return i.it; }
+public:
+    friend uaiw_constexpr bool operator==(const in& x, const safe::end<Iter>& y) { return x.it == friend_it(y); }
+    friend uaiw_constexpr bool operator!=(const in& x, const safe::end<Iter>& y) { return x.it != friend_it(y); }
+};
+
+template<class Iter>
+class out
+{
+private:
+    Iter it;
+#ifdef UNI_ALGO_ENABLE_SAFE_LAYER
+    Iter end;
+public:
+    uaiw_constexpr explicit out(Iter iter, std::size_t size)
+        : it{iter}, end{it + static_cast<std::ptrdiff_t>(size)} {}
+    uaiw_constexpr decltype(*it) operator*() const { if (it >= end) kms(); return *it; }
+#else
+public:
+    uaiw_constexpr explicit out(Iter iter, std::size_t) : it{iter} {}
+    uaiw_constexpr decltype(*it) operator*() const { return *it; }
+#endif
+    uaiw_constexpr out() = delete;
+    uaiw_constexpr out operator++(int)
+    {
+        out tmp = *this;
+        ++it;
+        return tmp;
+    }
+    friend uaiw_constexpr std::ptrdiff_t operator-(const out& x, const out& y) { return x.it - y.it; }
+};
+
+} // namespace safe
+
+#ifdef UNI_ALGO_ENABLE_SAFE_LAYER
+template<typename T, std::size_t N>
+using type_array = safe::array<T, N>;
+#else
+template<typename T, std::size_t N>
+using type_array = std::array<T, N>;
+#endif
+
+} // namespace una::detail
+
+
 // AMALGAMATION: uni_algo/impl/internal_defines.h
 
 /* Unicode Algorithms Implementation by Marl Gigical.
  * License: Public Domain or MIT - sign whatever you want.
  * See LICENSE.txt */
 
-// Warning! This file must never be used by a wrapper.
+// IMPORTANT: This file must never be used by a wrapper
 
-// Internal defines, must be used together with impl_undefs.h
+// Internal defines, must be used together with internal_undefs.h
 
 // The internal defines are lowercased because they make too much noise in the code if uppercased.
 
@@ -244,22 +482,23 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 
 // C implementation must be static because it will be included in .c file
 // Also add maybe unused to everything in C because a wrapper doesn't need to implement everything
+// If an internal (non-template) function should not be always inlined
+// then uaix_inline must be used instead of uaix_static. This prevents C++ ODR violation.
+// Note that it must be used for small functions only because we test with -Winline too.
 #ifdef __cplusplus
-#  define uaix_static
+#  ifdef UNI_ALGO_CONSTEXPR
+#    define uaix_static constexpr
+#    define uaix_inline constexpr
+#  else
+#    define uaix_static
+#    define uaix_inline inline // template<typename = void> alternative if -Winline will be too annoying
+#  endif
 #else
 #  if defined(__GNUC__) || defined(__clang__)
 #    define uaix_static static __attribute__((__unused__))
 #  else
 #    define uaix_static static
 #  endif
-#endif
-
-// If an internal (non-template) function should not be always inlined
-// then this must be used instead of uaix_static. This prevents C++ ODR violation.
-// Note that it must be used for small functions only because we test with -Winline too.
-#ifdef __cplusplus
-#  define uaix_inline inline // template<typename = void> alternative if -Winline will be too annoying
-#else
 #  define uaix_inline uaix_static
 #endif
 
@@ -287,6 +526,19 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 #  define uaix_const_data const
 #endif
 
+#if defined(__cplusplus) && !defined(UNI_ALGO_FORCE_C_ARRAYS)
+#define uaix_array(type, var, size) type_array<type, size> var
+#define uaix_array2(type, var, size1, size2) type_array<type_array<type, size2>, size1> var
+// This helper is needed to trigger brace ellison for multidimensional array: https://stackoverflow.com/a/53308148
+#define uaix_array_brace_ellison(type, size) type_array<type, size>
+#else
+#define uaix_array(type, var, size) type var[size]
+#define uaix_array2(type, var, size1, size2) type var[size1][size2]
+#define uaix_array_brace_ellison(type, size)
+#endif
+#define uaix_data_array uaix_array
+#define uaix_data_array2 uaix_array2
+
 // -Wsign-conversion is the only warning that cannot be suppressed in C++ by using other tools
 // because it's almost impossible to suppress it inside templates.
 // Note that because of this the warning isn't even enabled in GCC
@@ -296,11 +548,15 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 // so we need to suppress the warning about suppressing warnings.
 // Note that even though these warnings are supressed it doesn't mean stupid things with
 // casts are allowed that means the low-level must use casts only to suppress warnings.
+// -Wmissing-braces is just broken in GCC but works fine in Clang.
 #ifdef __cplusplus
 #  if defined(__GNUC__) || defined(__clang__)
 #    pragma GCC diagnostic push
 #    pragma GCC diagnostic ignored "-Wsign-conversion"
 #    pragma GCC diagnostic ignored "-Wold-style-cast"
+#    if defined(__GNUC__) && !defined(__clang__)
+#      pragma GCC diagnostic ignored "-Wmissing-braces"
+#    endif
 #  endif
 #endif
 
@@ -310,7 +566,7 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
-uaix_const_data unsigned char stage1_lower[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_lower, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,10,5,5,5,5,5,
 5,5,5,5,5,5,5,5,
@@ -1400,7 +1656,7 @@ uaix_const_data unsigned char stage1_lower[] = {
 5,5,5,5,5,5,5,5,
 5,5,5,5,5,5,5,5};
 
-uaix_const_data type_codept stage2_lower[] = {
+uaix_const_data uaix_data_array(type_codept, stage2_lower, 4608) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -2014,7 +2270,7 @@ uaix_const_data type_codept stage2_lower[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned char stage1_upper[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_upper, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,10,11,12,12,12,12,
 12,12,12,12,12,12,12,12,
@@ -3104,7 +3360,7 @@ uaix_const_data unsigned char stage1_upper[] = {
 12,12,12,12,12,12,12,12,
 12,12,12,12,12,12,12,12};
 
-uaix_const_data type_codept stage2_upper[] = {
+uaix_const_data uaix_data_array(type_codept, stage2_upper, 5376) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -3820,7 +4076,7 @@ uaix_const_data type_codept stage2_upper[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned char stage1_fold[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_fold, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,10,5,5,5,5,5,
 5,5,5,5,5,5,5,5,
@@ -4910,7 +5166,7 @@ uaix_const_data unsigned char stage1_fold[] = {
 5,5,5,5,5,5,5,5,
 5,5,5,5,5,5,5,5};
 
-uaix_const_data type_codept stage2_fold[] = {
+uaix_const_data uaix_data_array(type_codept, stage2_fold, 4864) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -5560,7 +5816,7 @@ uaix_const_data type_codept stage2_fold[] = {
 
 #ifndef UNI_ALGO_DISABLE_BREAK_WORD
 
-uaix_const_data unsigned char stage1_title[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_title, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,10,11,12,12,12,12,
 12,12,12,12,12,12,12,12,
@@ -6650,7 +6906,7 @@ uaix_const_data unsigned char stage1_title[] = {
 12,12,12,12,12,12,12,12,
 12,12,12,12,12,12,12,12};
 
-uaix_const_data type_codept stage2_title[] = {
+uaix_const_data uaix_data_array(type_codept, stage2_title, 5248) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -7353,7 +7609,7 @@ uaix_const_data type_codept stage2_title[] = {
 
 #ifndef UNI_ALGO_DISABLE_COLLATE
 
-uaix_const_data unsigned short stage1_order[] = {
+uaix_const_data uaix_data_array(unsigned short, stage1_order, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,10,11,12,13,14,15,
 16,17,18,19,20,21,22,23,
@@ -8443,7 +8699,7 @@ uaix_const_data unsigned short stage1_order[] = {
 104,104,104,104,104,104,104,104,
 104,104,104,104,104,104,104,104};
 
-uaix_const_data unsigned short stage2_order[] = {
+uaix_const_data uaix_data_array(unsigned short, stage2_order, 40320) = {
 /* Block: 0 */
 1,2,3,4,5,6,7,8,
 9,473,474,475,476,477,10,11,
@@ -13802,7 +14058,7 @@ uaix_const_data unsigned short stage2_order[] = {
 
 #endif // UNI_ALGO_DISABLE_COLLATE
 
-uaix_const_data unsigned char stage1_case_prop[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_case_prop, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,10,11,12,13,14,15,
 16,17,18,19,20,21,22,23,
@@ -14892,7 +15148,7 @@ uaix_const_data unsigned char stage1_case_prop[] = {
 34,34,34,34,34,34,34,34,
 34,34,34,34,34,34,34,34};
 
-uaix_const_data unsigned char stage2_case_prop[] = {
+uaix_const_data uaix_data_array(unsigned char, stage2_case_prop, 20736) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -17650,7 +17906,7 @@ uaix_const_data unsigned char stage2_case_prop[] = {
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
 
-uaix_const_data unsigned char stage1_special_upper[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_special_upper, 512) = {
 0,1,2,3,0,0,0,4,
 0,0,0,5,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -17716,7 +17972,7 @@ uaix_const_data unsigned char stage1_special_upper[] = {
 0,0,0,0,0,0,9,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned char stage2_special_upper[] = {
+uaix_const_data uaix_data_array(unsigned char, stage2_special_upper, 1280) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -17888,7 +18144,8 @@ uaix_const_data unsigned char stage2_special_upper[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned short stage3_special_upper[][4] = {
+uaix_const_data uaix_data_array2(unsigned short, stage3_special_upper, 103, 4) = {
+uaix_array_brace_ellison(unsigned short, 4)
 {0,0,0,0},
 {2,83,83,0},
 {2,70,70,0},
@@ -17993,7 +18250,7 @@ uaix_const_data unsigned short stage3_special_upper[][4] = {
 {3,919,834,921},
 {3,937,834,921}};
 
-uaix_const_data unsigned char stage1_special_fold[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_special_fold, 512) = {
 0,1,2,3,0,0,0,4,
 0,0,0,5,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -18059,7 +18316,7 @@ uaix_const_data unsigned char stage1_special_fold[] = {
 0,0,0,0,0,0,9,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned char stage2_special_fold[] = {
+uaix_const_data uaix_data_array(unsigned char, stage2_special_fold, 1280) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -18231,7 +18488,8 @@ uaix_const_data unsigned char stage2_special_fold[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned short stage3_special_fold[][4] = {
+uaix_const_data uaix_data_array2(unsigned short, stage3_special_fold, 105, 4) = {
+uaix_array_brace_ellison(unsigned short, 4)
 {0,0,0,0},
 {2,115,115,0},
 {2,105,775,0},
@@ -18340,7 +18598,7 @@ uaix_const_data unsigned short stage3_special_fold[][4] = {
 
 #ifndef UNI_ALGO_DISABLE_BREAK_WORD
 
-uaix_const_data unsigned char stage1_special_title[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_special_title, 512) = {
 0,1,2,3,0,0,0,4,
 0,0,0,5,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -18406,7 +18664,7 @@ uaix_const_data unsigned char stage1_special_title[] = {
 0,0,0,0,0,0,9,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned char stage2_special_title[] = {
+uaix_const_data uaix_data_array(unsigned char, stage2_special_title, 1280) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -18578,7 +18836,8 @@ uaix_const_data unsigned char stage2_special_title[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned short stage3_special_title[][4] = {
+uaix_const_data uaix_data_array2(unsigned short, stage3_special_title, 49, 4) = {
+uaix_array_brace_ellison(unsigned short, 4)
 {0,0,0,0},
 {2,83,115,0},
 {2,70,102,0},
@@ -18634,7 +18893,7 @@ uaix_const_data unsigned short stage3_special_title[][4] = {
 // This is handled in place
 #if 0
 
-uaix_const_data unsigned char stage1_special_lower[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_special_lower, 512) = {
 0,0,1,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -18700,7 +18959,7 @@ uaix_const_data unsigned char stage1_special_lower[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned char stage2_special_lower[] = {
+uaix_const_data uaix_data_array(unsigned char, stage2_special_lower, 256) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -18736,7 +18995,8 @@ uaix_const_data unsigned char stage2_special_lower[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned short stage3_special_lower[][4] = {
+uaix_const_data uaix_data_array(unsigned short, stage3_special_lower, 2, 4) = {
+uaix_array_brace_ellison(unsigned short, 4)
 {0,0,0,0},
 {2,105,775,0}};
 
@@ -18752,7 +19012,7 @@ UNI_ALGO_IMPL_NAMESPACE_END
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
-uaix_const_data unsigned char stage1_ccc_qc[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_ccc_qc, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,0,10,11,12,13,14,
 15,16,17,18,19,20,21,22,
@@ -19842,7 +20102,7 @@ uaix_const_data unsigned char stage1_ccc_qc[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned short stage2_ccc_qc[] = {
+uaix_const_data uaix_data_array(unsigned short, stage2_ccc_qc, 20224) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -22530,7 +22790,7 @@ uaix_const_data unsigned short stage2_ccc_qc[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned char stage1_decomp_nfd[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_decomp_nfd, 8704) = {
 0,1,2,3,4,0,5,6,
 7,8,0,0,9,10,0,0,
 0,0,11,12,13,0,14,15,
@@ -23620,7 +23880,7 @@ uaix_const_data unsigned char stage1_decomp_nfd[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned short stage2_decomp_nfd[] = {
+uaix_const_data uaix_data_array(unsigned short, stage2_decomp_nfd, 7040) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -24557,7 +24817,7 @@ uaix_const_data unsigned short stage2_decomp_nfd[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data type_codept stage3_decomp_nfd[] = {
+uaix_const_data uaix_data_array(type_codept, stage3_decomp_nfd, 5468) = {
 0,2,65,768,2,65,769,2,
 65,770,2,65,771,2,65,776,
 2,65,778,2,67,807,2,69,
@@ -25245,7 +25505,7 @@ uaix_const_data type_codept stage3_decomp_nfd[] = {
 
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 
-uaix_const_data unsigned char stage1_decomp_nfkd[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_decomp_nfkd, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,0,10,11,12,0,0,
 0,0,13,14,15,0,16,17,
@@ -26335,7 +26595,7 @@ uaix_const_data unsigned char stage1_decomp_nfkd[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned short stage2_decomp_nfkd[] = {
+uaix_const_data uaix_data_array(unsigned short, stage2_decomp_nfkd, 13568) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -28139,7 +28399,7 @@ uaix_const_data unsigned short stage2_decomp_nfkd[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data type_codept stage3_decomp_nfkd[] = {
+uaix_const_data uaix_data_array(type_codept, stage3_decomp_nfkd, 14970) = {
 0,1,32,2,32,776,1,97,
 2,32,772,1,50,1,51,2,
 32,769,1,956,2,32,807,1,
@@ -30015,7 +30275,7 @@ uaix_const_data type_codept stage3_decomp_nfkd[] = {
 
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
-uaix_const_data unsigned char stage1_comp_cp1[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_comp_cp1, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,6,6,10,11,6,6,
 6,6,12,13,6,6,14,15,
@@ -31105,7 +31365,7 @@ uaix_const_data unsigned char stage1_comp_cp1[] = {
 6,6,6,6,6,6,6,6,
 6,6,6,6,6,6,6,6};
 
-uaix_const_data unsigned short stage2_comp_cp1[] = {
+uaix_const_data uaix_data_array(unsigned short, stage2_comp_cp1, 4736) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -31736,7 +31996,7 @@ uaix_const_data unsigned short stage2_comp_cp1[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned char stage1_comp_cp2[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_comp_cp2, 8704) = {
 0,0,0,0,0,0,1,0,
 0,0,0,0,2,0,0,0,
 0,0,3,4,0,0,5,6,
@@ -32826,7 +33086,7 @@ uaix_const_data unsigned char stage1_comp_cp2[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data unsigned short stage2_comp_cp2[] = {
+uaix_const_data uaix_data_array(unsigned short, stage2_comp_cp2, 2560) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0,
@@ -33168,7 +33428,8 @@ uaix_const_data unsigned short stage2_comp_cp2[] = {
 0,0,0,0,0,0,0,0,
 0,0,0,0,0,0,0,0};
 
-uaix_const_data type_codept stage3_comp[][64] = {
+uaix_const_data uaix_data_array2(type_codept, stage3_comp, 378, 64) = {
+uaix_array_brace_ellison(type_codept, 64)
 {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
 {0,192,193,194,195,196,197,0,256,258,260,550,461,0,0,512,514,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7680,7840,0,0,0,0,0,7842,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
 {0,0,262,264,0,0,0,199,0,0,0,266,268,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -33556,7 +33817,7 @@ UNI_ALGO_IMPL_NAMESPACE_END
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
-uaix_const_data unsigned char stage1_prop[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_prop, 8704) = {
 0,1,2,3,4,5,6,7,
 8,9,10,11,12,13,14,15,
 16,17,18,19,20,21,22,23,
@@ -34646,7 +34907,7 @@ uaix_const_data unsigned char stage1_prop[] = {
 107,107,107,107,107,107,107,107,
 107,107,107,107,107,107,107,254};
 
-uaix_const_data unsigned char stage2_prop[] = {
+uaix_const_data uaix_data_array(unsigned char, stage2_prop, 32640) = {
 /* Block: 0 */
 26,26,26,26,26,26,26,26,
 26,90,90,90,90,90,26,26,
@@ -38991,7 +39252,7 @@ UNI_ALGO_IMPL_NAMESPACE_END
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
-uaix_const_data unsigned char stage1_break_grapheme[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_break_grapheme, 8704) = {
 0,1,2,2,2,2,3,2,
 2,4,2,5,6,7,8,9,
 10,11,12,13,14,15,16,17,
@@ -40081,7 +40342,7 @@ uaix_const_data unsigned char stage1_break_grapheme[] = {
 2,2,2,2,2,2,2,2,
 2,2,2,2,2,2,2,2};
 
-uaix_const_data unsigned char stage2_break_grapheme[] = {
+uaix_const_data uaix_data_array(unsigned char, stage2_break_grapheme, 19456) = {
 /* Block: 0 */
 4,4,4,4,4,4,4,4,
 4,4,3,4,4,2,4,4,
@@ -42675,7 +42936,7 @@ UNI_ALGO_IMPL_NAMESPACE_END
 
 UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
-uaix_const_data unsigned char stage1_break_word[] = {
+uaix_const_data uaix_data_array(unsigned char, stage1_break_word, 8704) = {
 0,1,2,2,2,3,4,5,
 2,6,7,8,9,10,11,12,
 13,14,15,16,17,18,19,20,
@@ -43765,7 +44026,7 @@ uaix_const_data unsigned char stage1_break_word[] = {
 57,57,57,57,57,57,57,57,
 57,57,57,57,57,57,57,57};
 
-uaix_const_data unsigned char stage2_break_word[] = {
+uaix_const_data uaix_data_array(unsigned char, stage2_break_word, 29056) = {
 /* Block: 0 */
 0,0,0,0,0,0,0,0,
 0,0,2,3,3,1,0,0,
@@ -47638,7 +47899,7 @@ UNI_ALGO_IMPL_NAMESPACE_BEGIN
 #ifdef __cplusplus
 template<typename T1, typename T2>
 uaix_always_inline_tmpl
-uaix_static type_codept stages(type_codept c, T1 stage1, T2 stage2)
+uaix_static type_codept stages(type_codept c, const T1& stage1, const T2& stage2)
 {
     // If c > 0x10FFFF the behaviour is undefined
     // For stage1/2_special_* tables if c > 0xFFFF the behaviour is undefined
@@ -47678,7 +47939,7 @@ uaix_const type_codept iter_error = 0xFFFFFFFF; // Any number outside Unicode ra
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf8 iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf8 iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept* const codepoint, type_codept error)
 {
     // If first >= last the behaviour is undefined
     // C++ Note: works with iterators: input, forward, bidirectional, random access, contiguous
@@ -47687,7 +47948,7 @@ uaix_static it_in_utf8 iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept
 
     it_in_utf8 s = first;
 
-    type_codept c = (*s & 0xFF), c2, c3, c4;
+    type_codept c = (*s & 0xFF), c2 = 0, c3 = 0, c4 = 0; // c2, c3, c4 tag_can_be_uninitialized
 
     if (uaix_likely(c <= 0x7F)) // Fast route for ASCII
     {
@@ -47723,7 +47984,7 @@ uaix_static it_in_utf8 iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept
             return ++s;
         }
     }
-    else if (c == 0xE0)
+    else if (uaix_likely(c == 0xE0))
     {
         if (++s != last && ((c2 = (*s & 0xFF)) >= 0xA0 && c2 <= 0xBF) &&
             ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF))
@@ -47797,7 +48058,7 @@ uaix_static it_in_utf8 iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf16 iter_utf16(it_in_utf16 first, it_end_utf16 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf16 iter_utf16(it_in_utf16 first, it_end_utf16 last, type_codept* const codepoint, type_codept error)
 {
     // If first >= last the behaviour is undefined
     // C++ Note: works with iterators: input, forward, bidirectional, random access, contiguous
@@ -47844,7 +48105,7 @@ uaix_static it_in_utf16 iter_utf16(it_in_utf16 first, it_end_utf16 last, type_co
 template<typename it_in_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf8 iter_rev_utf8(it_in_utf8 first, it_in_utf8 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf8 iter_rev_utf8(it_in_utf8 first, it_in_utf8 last, type_codept* const codepoint, type_codept error)
 {
     // If first >= last the behaviour is undefined
     // C++ Note: works with iterators: bidirectional, random access, contiguous
@@ -47871,7 +48132,7 @@ uaix_static it_in_utf8 iter_rev_utf8(it_in_utf8 first, it_in_utf8 last, type_cod
 template<typename it_in_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf16 iter_rev_utf16(it_in_utf16 first, it_in_utf16 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf16 iter_rev_utf16(it_in_utf16 first, it_in_utf16 last, type_codept* const codepoint, type_codept error)
 {
     // If first >= last the behaviour is undefined
     // C++ Note: works with iterators: bidirectional, random access, contiguous
@@ -47956,7 +48217,7 @@ uaix_const type_codept impl_iter_error = 0xFFFFFFFF; // iter_error
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
-uaix_static it_in_utf8 impl_iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf8 impl_iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept* const codepoint, type_codept error)
 {
     return iter_utf8(first, last, codepoint, error);
 }
@@ -47964,7 +48225,7 @@ uaix_static it_in_utf8 impl_iter_utf8(it_in_utf8 first, it_end_utf8 last, type_c
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
-uaix_static it_in_utf16 impl_iter_utf16(it_in_utf16 first, it_end_utf16 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf16 impl_iter_utf16(it_in_utf16 first, it_end_utf16 last, type_codept* const codepoint, type_codept error)
 {
     return iter_utf16(first, last, codepoint, error);
 }
@@ -47972,7 +48233,7 @@ uaix_static it_in_utf16 impl_iter_utf16(it_in_utf16 first, it_end_utf16 last, ty
 #ifdef __cplusplus
 template<typename it_in_utf8>
 #endif
-uaix_static it_in_utf8 impl_iter_rev_utf8(it_in_utf8 first, it_in_utf8 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf8 impl_iter_rev_utf8(it_in_utf8 first, it_in_utf8 last, type_codept* const codepoint, type_codept error)
 {
     return iter_rev_utf8(first, last, codepoint, error);
 }
@@ -47980,7 +48241,7 @@ uaix_static it_in_utf8 impl_iter_rev_utf8(it_in_utf8 first, it_in_utf8 last, typ
 #ifdef __cplusplus
 template<typename it_in_utf16>
 #endif
-uaix_static it_in_utf16 impl_iter_rev_utf16(it_in_utf16 first, it_in_utf16 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf16 impl_iter_rev_utf16(it_in_utf16 first, it_in_utf16 last, type_codept* const codepoint, type_codept error)
 {
     return iter_rev_utf16(first, last, codepoint, error);
 }
@@ -47991,7 +48252,7 @@ uaix_static it_in_utf16 impl_iter_rev_utf16(it_in_utf16 first, it_in_utf16 last,
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf8 inline_iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf8 inline_iter_utf8(it_in_utf8 first, it_end_utf8 last, type_codept* const codepoint, type_codept error)
 {
     return iter_utf8(first, last, codepoint, error);
 }
@@ -48000,7 +48261,7 @@ uaix_static it_in_utf8 inline_iter_utf8(it_in_utf8 first, it_end_utf8 last, type
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf16 inline_iter_utf16(it_in_utf16 first, it_end_utf16 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf16 inline_iter_utf16(it_in_utf16 first, it_end_utf16 last, type_codept* const codepoint, type_codept error)
 {
     return iter_utf16(first, last, codepoint, error);
 }
@@ -48009,7 +48270,7 @@ uaix_static it_in_utf16 inline_iter_utf16(it_in_utf16 first, it_end_utf16 last, 
 template<typename it_in_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf8 inline_iter_rev_utf8(it_in_utf8 first, it_in_utf8 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf8 inline_iter_rev_utf8(it_in_utf8 first, it_in_utf8 last, type_codept* const codepoint, type_codept error)
 {
     return iter_rev_utf8(first, last, codepoint, error);
 }
@@ -48018,7 +48279,7 @@ uaix_static it_in_utf8 inline_iter_rev_utf8(it_in_utf8 first, it_in_utf8 last, t
 template<typename it_in_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf16 inline_iter_rev_utf16(it_in_utf16 first, it_in_utf16 last, type_codept* codepoint, type_codept error)
+uaix_static it_in_utf16 inline_iter_rev_utf16(it_in_utf16 first, it_in_utf16 last, type_codept* const codepoint, type_codept error)
 {
     return iter_rev_utf16(first, last, codepoint, error);
 }
@@ -48063,17 +48324,17 @@ UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
 // The length of a destination (result) string must be premultiplied with one of these
 // Example: destination_length = source_length * impl_x_function_name
-uaix_const size_t impl_x_utf8to16 = 1;
-uaix_const size_t impl_x_utf16to8 = 4; // TODO: Isn't it 3?
-uaix_const size_t impl_x_utf8to32 = 1;
-uaix_const size_t impl_x_utf32to8 = 4;
-uaix_const size_t impl_x_utf16to32 = 1;
-uaix_const size_t impl_x_utf32to16 = 2;
+uaix_const size_t impl_x_utf8to16  = 1; // tag_unicode_stable_value
+uaix_const size_t impl_x_utf16to8  = 3; // tag_unicode_stable_value
+uaix_const size_t impl_x_utf8to32  = 1; // tag_unicode_stable_value
+uaix_const size_t impl_x_utf32to8  = 4; // tag_unicode_stable_value
+uaix_const size_t impl_x_utf16to32 = 1; // tag_unicode_stable_value
+uaix_const size_t impl_x_utf32to16 = 2; // tag_unicode_stable_value
 
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8, typename it_out_utf16>
 #endif
-uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf16 result, size_t* error)
+uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf16 result, size_t* const error)
 {
     // If first > last the behaviour is undefined
     // If error is used and wasn't initialized with impl_npos the behaviour is undefined
@@ -48109,7 +48370,7 @@ uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf1
 
     while (s != last)
     {
-        type_codept c = (*s & 0xFF), c2, c3, c4;
+        type_codept c = (*s & 0xFF), c2 = 0, c3 = 0, c4 = 0; // c2, c3, c4 tag_can_be_uninitialized
         prev = s; // Save previous position for error
 
         if (uaix_likely(c <= 0x7F)) // Fast route for ASCII
@@ -48150,7 +48411,7 @@ uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf1
                 continue;
             }
         }
-        else if (c == 0xE0)
+        else if (uaix_likely(c == 0xE0))
         {
             if (++s != last && ((c2 = (*s & 0xFF)) >= 0xA0 && c2 <= 0xBF) &&
                 ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF))
@@ -48248,7 +48509,7 @@ uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf1
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16, typename it_out_utf8>
 #endif
-uaix_static size_t impl_utf16to8(it_in_utf16 first, it_end_utf16 last, it_out_utf8 result, size_t* error)
+uaix_static size_t impl_utf16to8(it_in_utf16 first, it_end_utf16 last, it_out_utf8 result, size_t* const error)
 {
     it_in_utf16 src = first;
     it_out_utf8 dst = result;
@@ -48323,7 +48584,7 @@ uaix_static size_t impl_utf16to8(it_in_utf16 first, it_end_utf16 last, it_out_ut
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8, typename it_out_utf32>
 #endif
-uaix_static size_t impl_utf8to32(it_in_utf8 first, it_end_utf8 last, it_out_utf32 result, size_t* error)
+uaix_static size_t impl_utf8to32(it_in_utf8 first, it_end_utf8 last, it_out_utf32 result, size_t* const error)
 {
     it_in_utf8 s = first;
     it_in_utf8 prev = s;
@@ -48331,7 +48592,7 @@ uaix_static size_t impl_utf8to32(it_in_utf8 first, it_end_utf8 last, it_out_utf3
 
     while (s != last)
     {
-        type_codept c = (*s & 0xFF), c2, c3, c4;
+        type_codept c = (*s & 0xFF), c2 = 0, c3 = 0, c4 = 0; // c2, c3, c4 tag_can_be_uninitialized
         prev = s; // Save previous position for error
 
         if (uaix_likely(c <= 0x7F)) // Fast route for ASCII
@@ -48372,7 +48633,7 @@ uaix_static size_t impl_utf8to32(it_in_utf8 first, it_end_utf8 last, it_out_utf3
                 continue;
             }
         }
-        else if (c == 0xE0)
+        else if (uaix_likely(c == 0xE0))
         {
             if (++s != last && ((c2 = (*s & 0xFF)) >= 0xA0 && c2 <= 0xBF) &&
                 ++s != last && ((c3 = (*s & 0xFF)) >= 0x80 && c3 <= 0xBF))
@@ -48454,7 +48715,7 @@ uaix_static size_t impl_utf8to32(it_in_utf8 first, it_end_utf8 last, it_out_utf3
 #ifdef __cplusplus
 template<typename it_in_utf32, typename it_end_utf32, typename it_out_utf8>
 #endif
-uaix_static size_t impl_utf32to8(it_in_utf32 first, it_end_utf32 last, it_out_utf8 result, size_t* error)
+uaix_static size_t impl_utf32to8(it_in_utf32 first, it_end_utf32 last, it_out_utf8 result, size_t* const error)
 {
     it_in_utf32 src = first;
     it_out_utf8 dst = result;
@@ -48518,7 +48779,7 @@ uaix_static size_t impl_utf32to8(it_in_utf32 first, it_end_utf32 last, it_out_ut
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16, typename it_out_utf32>
 #endif
-uaix_static size_t impl_utf16to32(it_in_utf16 first, it_end_utf16 last, it_out_utf32 result, size_t* error)
+uaix_static size_t impl_utf16to32(it_in_utf16 first, it_end_utf16 last, it_out_utf32 result, size_t* const error)
 {
     it_in_utf16 src = first;
     it_out_utf32 dst = result;
@@ -48572,7 +48833,7 @@ uaix_static size_t impl_utf16to32(it_in_utf16 first, it_end_utf16 last, it_out_u
 #ifdef __cplusplus
 template<typename it_in_utf32, typename it_end_utf32, typename it_out_utf16>
 #endif
-uaix_static size_t impl_utf32to16(it_in_utf32 first, it_end_utf32 last, it_out_utf16 result, size_t* error)
+uaix_static size_t impl_utf32to16(it_in_utf32 first, it_end_utf32 last, it_out_utf16 result, size_t* const error)
 {
     it_in_utf32 src = first;
     it_out_utf16 dst = result;
@@ -48616,7 +48877,7 @@ uaix_static size_t impl_utf32to16(it_in_utf32 first, it_end_utf32 last, it_out_u
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
-uaix_static bool impl_is_valid_utf8(it_in_utf8 first, it_end_utf8 last, size_t* error)
+uaix_static bool impl_is_valid_utf8(it_in_utf8 first, it_end_utf8 last, size_t* const error)
 {
     // Based on impl_utf8to16 function
 
@@ -48625,7 +48886,7 @@ uaix_static bool impl_is_valid_utf8(it_in_utf8 first, it_end_utf8 last, size_t* 
 
     while (s != last)
     {
-        type_codept c = (*s & 0xFF), c2, c3, c4;
+        type_codept c = (*s & 0xFF), c2 = 0, c3 = 0, c4 = 0; // c2, c3, c4 tag_can_be_uninitialized
         prev = s; // Save previous position for error
 
         if (uaix_likely(c <= 0x7F)) // Fast route for ASCII
@@ -48727,7 +48988,7 @@ uaix_static bool impl_is_valid_utf8(it_in_utf8 first, it_end_utf8 last, size_t* 
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
-uaix_static bool impl_is_valid_utf16(it_in_utf16 first, it_end_utf16 last, size_t* error)
+uaix_static bool impl_is_valid_utf16(it_in_utf16 first, it_end_utf16 last, size_t* const error)
 {
     // Based on impl_utf16to8 function
 
@@ -48780,7 +49041,7 @@ uaix_static bool impl_is_valid_utf16(it_in_utf16 first, it_end_utf16 last, size_
 #ifdef __cplusplus
 template<typename it_in_utf32, typename it_end_utf32>
 #endif
-uaix_static bool impl_is_valid_utf32(it_in_utf32 first, it_end_utf32 last, size_t* error)
+uaix_static bool impl_is_valid_utf32(it_in_utf32 first, it_end_utf32 last, size_t* const error)
 {
     // Based on impl_utf32to8 function
 
@@ -48881,7 +49142,7 @@ struct impl_break_grapheme_state
 };
 
 uaix_always_inline
-uaix_static void impl_break_grapheme_state_reset(struct impl_break_grapheme_state* state)
+uaix_static void impl_break_grapheme_state_reset(struct impl_break_grapheme_state* const state)
 {
     state->prev_cp = 0;
     state->prev_cp_prop = 0;
@@ -48913,7 +49174,7 @@ uaix_static const bool break_table_grapheme[15][15] =
 };
 */
 uaix_always_inline
-uaix_static bool break_grapheme(struct impl_break_grapheme_state* state, type_codept c)
+uaix_static bool break_grapheme(struct impl_break_grapheme_state* const state, type_codept c)
 {
     // TODO: https://unicode.org/reports/tr29/#State_Machines
     // ftp://ftp.unicode.org/Public/UNIDATA/auxiliary/GraphemeBreakTest.html
@@ -48923,7 +49184,7 @@ uaix_static bool break_grapheme(struct impl_break_grapheme_state* state, type_co
     type_codept c_prop = stages_break_grapheme_prop(c);
     type_codept p_prop = state->prev_cp_prop;
 
-    bool result = false;
+    bool result = false; // tag_can_be_uninitialized
 
     // https://www.unicode.org/reports/tr29/#Grapheme_Cluster_Boundary_Rules
     // Unicode 11.0 - 15.0 rules
@@ -48982,13 +49243,13 @@ uaix_static bool break_grapheme(struct impl_break_grapheme_state* state, type_co
 #ifdef __cplusplus
 template<typename = void> // TODO: What is this? Why uaix_inline is not used here instead of this crap?
 #endif
-uaix_static bool impl_break_grapheme(struct impl_break_grapheme_state* state, type_codept c)
+uaix_static bool impl_break_grapheme(struct impl_break_grapheme_state* const state, type_codept c)
 {
     return break_grapheme(state, c);
 }
 
 uaix_always_inline
-uaix_static bool inline_break_grapheme(struct impl_break_grapheme_state* state, type_codept c)
+uaix_static bool inline_break_grapheme(struct impl_break_grapheme_state* const state, type_codept c)
 {
     return break_grapheme(state, c);
 }
@@ -49003,7 +49264,7 @@ template<typename it_in_utf8>
 uaix_static bool break_grapheme_rev_EP_utf8(it_in_utf8 first, it_in_utf8 last)
 {
     it_in_utf8 src = last;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (src != first)
     {
@@ -49027,8 +49288,8 @@ template<typename it_in_utf8>
 uaix_static bool break_grapheme_rev_RI_utf8(it_in_utf8 first, it_in_utf8 last)
 {
     it_in_utf8 src = last;
-    type_codept c = 0;
-    size_t count_RI = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    size_t count_RI = 0; // tag_must_be_initialized
 
     while (src != first)
     {
@@ -49048,13 +49309,13 @@ uaix_static bool break_grapheme_rev_RI_utf8(it_in_utf8 first, it_in_utf8 last)
 template<typename it_in_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool break_grapheme_rev_utf8(struct impl_break_grapheme_state* state, type_codept c,
+uaix_static bool break_grapheme_rev_utf8(struct impl_break_grapheme_state* const state, type_codept c,
                                          it_in_utf8 first, it_in_utf8 last)
 {
     type_codept c_prop = stages_break_grapheme_prop(c);
     type_codept p_prop = state->prev_cp_prop;
 
-    bool result = false;
+    bool result = false; // tag_can_be_uninitialized
 
     // https://www.unicode.org/reports/tr29/#Grapheme_Cluster_Boundary_Rules
     // Unicode 11.0 - 15.0 rules
@@ -49095,7 +49356,7 @@ uaix_static bool break_grapheme_rev_utf8(struct impl_break_grapheme_state* state
 #ifdef __cplusplus
 template<typename it_in_utf8>
 #endif
-uaix_static bool impl_break_grapheme_rev_utf8(struct impl_break_grapheme_state* state, type_codept c,
+uaix_static bool impl_break_grapheme_rev_utf8(struct impl_break_grapheme_state* const state, type_codept c,
                                               it_in_utf8 first, it_in_utf8 last)
 {
     return break_grapheme_rev_utf8(state, c, first, last);
@@ -49105,7 +49366,7 @@ uaix_static bool impl_break_grapheme_rev_utf8(struct impl_break_grapheme_state* 
 template<typename it_in_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool inline_break_grapheme_rev_utf8(struct impl_break_grapheme_state* state, type_codept c,
+uaix_static bool inline_break_grapheme_rev_utf8(struct impl_break_grapheme_state* const state, type_codept c,
                                                 it_in_utf8 first, it_in_utf8 last)
 {
     return break_grapheme_rev_utf8(state, c, first, last);
@@ -49120,7 +49381,7 @@ template<typename it_in_utf16>
 uaix_static bool break_grapheme_rev_EP_utf16(it_in_utf16 first, it_in_utf16 last)
 {
     it_in_utf16 src = last;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (src != first)
     {
@@ -49144,8 +49405,8 @@ template<typename it_in_utf16>
 uaix_static bool break_grapheme_rev_RI_utf16(it_in_utf16 first, it_in_utf16 last)
 {
     it_in_utf16 src = last;
-    type_codept c = 0;
-    size_t count_RI = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    size_t count_RI = 0; // tag_must_be_initialized
 
     while (src != first)
     {
@@ -49165,13 +49426,13 @@ uaix_static bool break_grapheme_rev_RI_utf16(it_in_utf16 first, it_in_utf16 last
 template<typename it_in_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool break_grapheme_rev_utf16(struct impl_break_grapheme_state* state, type_codept c,
+uaix_static bool break_grapheme_rev_utf16(struct impl_break_grapheme_state* const state, type_codept c,
                                           it_in_utf16 first, it_in_utf16 last)
 {
     type_codept c_prop = stages_break_grapheme_prop(c);
     type_codept p_prop = state->prev_cp_prop;
 
-    bool result = false;
+    bool result = false; // tag_can_be_uninitialized
 
     // https://www.unicode.org/reports/tr29/#Grapheme_Cluster_Boundary_Rules
     // Unicode 11.0 - 15.0 rules
@@ -49212,7 +49473,7 @@ uaix_static bool break_grapheme_rev_utf16(struct impl_break_grapheme_state* stat
 #ifdef __cplusplus
 template<typename it_in_utf16>
 #endif
-uaix_static bool impl_break_grapheme_rev_utf16(struct impl_break_grapheme_state* state, type_codept c,
+uaix_static bool impl_break_grapheme_rev_utf16(struct impl_break_grapheme_state* const state, type_codept c,
                                                it_in_utf16 first, it_in_utf16 last)
 {
     return break_grapheme_rev_utf16(state, c, first, last);
@@ -49222,7 +49483,7 @@ uaix_static bool impl_break_grapheme_rev_utf16(struct impl_break_grapheme_state*
 template<typename it_in_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool inline_break_grapheme_rev_utf16(struct impl_break_grapheme_state* state, type_codept c,
+uaix_static bool inline_break_grapheme_rev_utf16(struct impl_break_grapheme_state* const state, type_codept c,
                                                  it_in_utf16 first, it_in_utf16 last)
 {
     return break_grapheme_rev_utf16(state, c, first, last);
@@ -49319,7 +49580,7 @@ struct impl_break_word_state
 };
 
 uaix_always_inline
-uaix_static void impl_break_word_state_reset(struct impl_break_word_state* state)
+uaix_static void impl_break_word_state_reset(struct impl_break_word_state* const state)
 {
     state->prev_cp = 0;
     state->prev_cp_prop = 0;
@@ -49424,7 +49685,7 @@ uaix_static type_codept break_word_skip_utf8(it_in_utf8 first, it_end_utf8 last)
      * Must be 3 words but if we don't go back it will be 2. */
 
     it_in_utf8 src = first;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (src != last)
     {
@@ -49444,7 +49705,7 @@ uaix_static type_codept break_word_skip_utf8(it_in_utf8 first, it_end_utf8 last)
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool break_word_utf8(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool break_word_utf8(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                  it_in_utf8 first, it_end_utf8 last)
 {
     // word_prop property must be used only with impl_break_is_word* functions
@@ -49464,9 +49725,9 @@ uaix_static bool break_word_utf8(struct impl_break_word_state* state, type_codep
     type_codept p1_prop = break_word_prop(state->prev_cp1_prop);
     type_codept p2_prop = break_word_prop(state->prev_cp2_prop);
 
-    type_codept s_prop = 0;
+    type_codept s_prop = 0; // tag_can_be_uninitialized
 
-    bool result = false;
+    bool result = false; // tag_can_be_uninitialized
 
     // https://www.unicode.org/reports/tr29/#Word_Boundary_Rules
     // Unicode 11.0 - 15.0 rules
@@ -49574,7 +49835,7 @@ uaix_static bool break_word_utf8(struct impl_break_word_state* state, type_codep
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
-uaix_static bool impl_break_word_utf8(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool impl_break_word_utf8(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                       it_in_utf8 first, it_end_utf8 last)
 {
     return break_word_utf8(state, c, word_prop, first, last);
@@ -49584,7 +49845,7 @@ uaix_static bool impl_break_word_utf8(struct impl_break_word_state* state, type_
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool inline_break_word_utf8(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool inline_break_word_utf8(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                         it_in_utf8 first, it_end_utf8 last)
 {
     return break_word_utf8(state, c, word_prop, first, last);
@@ -49600,7 +49861,7 @@ template<typename it_in_utf8>
 uaix_static type_codept break_word_skip_rev_utf8(it_in_utf8 first, it_in_utf8 last)
 {
     it_in_utf8 src = last;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (src != first)
     {
@@ -49620,10 +49881,10 @@ uaix_static type_codept break_word_skip_rev_utf8(it_in_utf8 first, it_in_utf8 la
 template<typename it_in_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf8 break_word_skip_rev2_utf8(it_in_utf8 first, it_in_utf8 last, type_codept* new_prop)
+uaix_static it_in_utf8 break_word_skip_rev2_utf8(it_in_utf8 first, it_in_utf8 last, type_codept* const new_prop)
 {
     it_in_utf8 src = last;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (src != first)
     {
@@ -49646,8 +49907,8 @@ template<typename it_in_utf8>
 uaix_static bool break_word_rev_RI_utf8(it_in_utf8 first, it_in_utf8 last)
 {
     it_in_utf8 src = last;
-    type_codept c = 0;
-    size_t count_RI = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    size_t count_RI = 0; // tag_must_be_initialized
 
     while (src != first)
     {
@@ -49670,7 +49931,7 @@ uaix_static bool break_word_rev_RI_utf8(it_in_utf8 first, it_in_utf8 last)
 template<typename it_in_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool break_word_rev_utf8(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool break_word_rev_utf8(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                      it_in_utf8 first, it_in_utf8 last)
 {
     // word_prop property must be used only with impl_break_is_word* functions
@@ -49684,9 +49945,9 @@ uaix_static bool break_word_rev_utf8(struct impl_break_word_state* state, type_c
     type_codept p1_prop = break_word_prop(state->prev_cp1_prop);
     type_codept p2_prop = break_word_prop(state->prev_cp2_prop);
 
-    type_codept s_prop = 0;
+    type_codept s_prop = 0; // tag_can_be_uninitialized
 
-    bool result = false;
+    bool result = false; // tag_can_be_uninitialized
 
     // https://www.unicode.org/reports/tr29/#Word_Boundary_Rules
     // Unicode 11.0 - 15.0 rules
@@ -49792,7 +50053,7 @@ uaix_static bool break_word_rev_utf8(struct impl_break_word_state* state, type_c
 #ifdef __cplusplus
 template<typename it_in_utf8>
 #endif
-uaix_static bool impl_break_word_rev_utf8(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool impl_break_word_rev_utf8(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                           it_in_utf8 first, it_in_utf8 last)
 {
     return break_word_rev_utf8(state, c, word_prop, first, last);
@@ -49802,7 +50063,7 @@ uaix_static bool impl_break_word_rev_utf8(struct impl_break_word_state* state, t
 template<typename it_in_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool inline_break_word_rev_utf8(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool inline_break_word_rev_utf8(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                             it_in_utf8 first, it_in_utf8 last)
 {
     return break_word_rev_utf8(state, c, word_prop, first, last);
@@ -49817,7 +50078,7 @@ template<typename it_in_utf16, typename it_end_utf16>
 uaix_static type_codept break_word_skip_utf16(it_in_utf16 first, it_end_utf16 last)
 {
     it_in_utf16 src = first;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (src != last)
     {
@@ -49837,7 +50098,7 @@ uaix_static type_codept break_word_skip_utf16(it_in_utf16 first, it_end_utf16 la
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool break_word_utf16(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool break_word_utf16(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                   it_in_utf16 first, it_end_utf16 last)
 {
     // word_prop property must be used only with impl_break_is_word* functions
@@ -49851,9 +50112,9 @@ uaix_static bool break_word_utf16(struct impl_break_word_state* state, type_code
     type_codept p1_prop = break_word_prop(state->prev_cp1_prop);
     type_codept p2_prop = break_word_prop(state->prev_cp2_prop);
 
-    type_codept s_prop = 0;
+    type_codept s_prop = 0; // tag_can_be_uninitialized
 
-    bool result = false;
+    bool result = false; // tag_can_be_uninitialized
 
     // https://www.unicode.org/reports/tr29/#Word_Boundary_Rules
     // Unicode 11.0 - 15.0 rules
@@ -49961,7 +50222,7 @@ uaix_static bool break_word_utf16(struct impl_break_word_state* state, type_code
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
-uaix_static bool impl_break_word_utf16(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool impl_break_word_utf16(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                        it_in_utf16 first, it_end_utf16 last)
 {
     return break_word_utf16(state, c, word_prop, first, last);
@@ -49971,7 +50232,7 @@ uaix_static bool impl_break_word_utf16(struct impl_break_word_state* state, type
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool inline_break_word_utf16(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool inline_break_word_utf16(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                          it_in_utf16 first, it_end_utf16 last)
 {
     return break_word_utf16(state, c, word_prop, first, last);
@@ -49983,7 +50244,7 @@ template<typename it_in_utf16>
 uaix_static type_codept break_word_skip_rev_utf16(it_in_utf16 first, it_in_utf16 last)
 {
     it_in_utf16 src = last;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (src != first)
     {
@@ -50003,10 +50264,10 @@ uaix_static type_codept break_word_skip_rev_utf16(it_in_utf16 first, it_in_utf16
 template<typename it_in_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf16 break_word_skip_rev2_utf16(it_in_utf16 first, it_in_utf16 last, type_codept* new_prop)
+uaix_static it_in_utf16 break_word_skip_rev2_utf16(it_in_utf16 first, it_in_utf16 last, type_codept* const new_prop)
 {
     it_in_utf16 src = last;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (src != first)
     {
@@ -50029,8 +50290,8 @@ template<typename it_in_utf16>
 uaix_static bool break_word_rev_RI_utf16(it_in_utf16 first, it_in_utf16 last)
 {
     it_in_utf16 src = last;
-    type_codept c = 0;
-    size_t count_RI = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    size_t count_RI = 0; // tag_must_be_initialized
 
     while (src != first)
     {
@@ -50053,7 +50314,7 @@ uaix_static bool break_word_rev_RI_utf16(it_in_utf16 first, it_in_utf16 last)
 template<typename it_in_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool break_word_rev_utf16(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool break_word_rev_utf16(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                       it_in_utf16 first, it_in_utf16 last)
 {
     // word_prop property must be used only with impl_break_is_word* functions
@@ -50067,9 +50328,9 @@ uaix_static bool break_word_rev_utf16(struct impl_break_word_state* state, type_
     type_codept p1_prop = break_word_prop(state->prev_cp1_prop);
     type_codept p2_prop = break_word_prop(state->prev_cp2_prop);
 
-    type_codept s_prop = 0;
+    type_codept s_prop = 0; // tag_can_be_uninitialized
 
-    bool result = false;
+    bool result = false; // tag_can_be_uninitialized
 
     // https://www.unicode.org/reports/tr29/#Word_Boundary_Rules
     // Unicode 11.0 - 15.0 rules
@@ -50171,7 +50432,7 @@ uaix_static bool break_word_rev_utf16(struct impl_break_word_state* state, type_
 #ifdef __cplusplus
 template<typename it_in_utf16>
 #endif
-uaix_static bool impl_break_word_rev_utf16(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool impl_break_word_rev_utf16(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                            it_in_utf16 first, it_in_utf16 last)
 {
     return break_word_rev_utf16(state, c, word_prop, first, last);
@@ -50181,7 +50442,7 @@ uaix_static bool impl_break_word_rev_utf16(struct impl_break_word_state* state, 
 template<typename it_in_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static bool inline_break_word_rev_utf16(struct impl_break_word_state* state, type_codept c, type_codept* word_prop,
+uaix_static bool inline_break_word_rev_utf16(struct impl_break_word_state* const state, type_codept c, type_codept* const word_prop,
                                              it_in_utf16 first, it_in_utf16 last)
 {
     return break_word_rev_utf16(state, c, word_prop, first, last);
@@ -50189,6 +50450,352 @@ uaix_static bool inline_break_word_rev_utf16(struct impl_break_word_state* state
 
 #endif // UNI_ALGO_DOC_GENERATED_UTF16
 // END: GENERATED UTF-16 FUNCTIONS
+
+UNI_ALGO_IMPL_NAMESPACE_END
+
+//!#include "internal_undefs.h"
+
+
+// AMALGAMATION: uni_algo/impl/impl_locale.h
+
+
+//!#include "internal_defines.h"
+
+UNI_ALGO_IMPL_NAMESPACE_BEGIN
+
+// TODO:
+// Everything related to locales is a mess in Unicode so what is the best approach is still a question.
+// For now this file contains only conversion functions that store locale subtags in type_codept
+// See Unicode Technical Standard #35 for all things that ICU supports in locale tags
+// but we definitely don't want most of those things and want to KISS and follow BCP47.
+
+// https://www.rfc-editor.org/rfc/bcp/bcp47.txt
+// https://en.wikipedia.org/wiki/Script_(Unicode)
+// https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes
+// https://en.wikipedia.org/wiki/ISO_15924
+// https://en.wikipedia.org/wiki/ISO_3166-1
+// https://en.wikipedia.org/wiki/UN_M49
+// https://en.wikipedia.org/wiki/ISO_4217
+// https://www.unicode.org/reports/tr35/#Unknown_or_Invalid_Identifiers
+
+uaix_const type_codept impl_locale_language_und = 0x756E6400; // ISO 639-1 / BCP47 (Undetermined) primary language
+uaix_const type_codept impl_locale_script_Zzzz  = 0x5A7A7A7A; // ISO 15924
+uaix_const type_codept impl_locale_region_ZZ    = 0x5A5A0000; // ISO 3166-1 alpha-2
+//uaix_const type_codept impl_locale_region_ZZZ   = 0x5A5A5A00; // ISO 3166-1 alpha-3
+//uaix_const type_codept impl_locale_region_999   = 0x39393900; // ISO 3166-1 numeric (UN M.49)
+//uaix_const type_codept impl_locale_currency_XXX = 0x58585800; // ISO 4217
+
+// This function must be always constexpr in C++ even if constexpr low-level is disabled
+#ifdef __cplusplus
+template <typename it_in_utf8>
+constexpr   type_codept impl_locate_from_tag(it_in_utf8 s, size_t size)
+#else
+uaix_static type_codept impl_locate_from_tag(it_in_utf8 s, size_t size)
+#endif
+{
+    if (size == 1)
+        return ((s[0] & 0xFF) << 24);
+    if (size == 2)
+        return ((s[0] & 0xFF) << 24) | ((s[1] & 0xFF) << 16);
+    if (size == 3)
+        return ((s[0] & 0xFF) << 24) | ((s[1] & 0xFF) << 16) | ((s[2] & 0xFF) << 8);
+    if (size == 4)
+        return ((s[0] & 0xFF) << 24) | ((s[1] & 0xFF) << 16) | ((s[2] & 0xFF) << 8) | (s[3] & 0xFF);
+
+    return 0;
+}
+
+#ifdef __cplusplus
+template <typename it_out_utf8>
+#endif
+uaix_static size_t impl_locate_to_tag(type_codept v, it_out_utf8 s)
+{
+    size_t size = 0;
+
+    if ((v >> 24) & 0xFF)
+        s[size++] = (type_char8)((v >> 24) & 0xFF);
+    if ((v >> 16) & 0xFF)
+        s[size++] = (type_char8)((v >> 16) & 0xFF);
+    if ((v >> 8) & 0xFF)
+        s[size++] = (type_char8)((v >> 8) & 0xFF);
+    if (v & 0xFF)
+        s[size++] = (type_char8)(v & 0xFF);
+
+    return size;
+}
+
+#ifdef __cplusplus
+template <typename it_in_utf8>
+#endif
+uaix_static type_codept impl_locale_from_language(it_in_utf8 s, size_t size, type_codept unknown)
+{
+    // EXAMPLE: en/und (shortest ISO 639 code)
+    type_codept result = 0;
+
+    if (size != 2 && size != 3)
+        return unknown;
+
+    if (s[0] >= 'A' && s[0] <= 'Z')
+        result |= (((s[0] ^ 32) & 0xFF) << 24);
+    else if (s[0] >= 'a' && s[0] <= 'z')
+        result |= ((s[0] & 0xFF) << 24);
+    else
+        return unknown;
+
+    if (s[1] >= 'A' && s[1] <= 'Z')
+        result |= (((s[1] ^ 32) & 0xFF) << 16);
+    else if (s[1] >= 'a' && s[1] <= 'z')
+        result |= ((s[1] & 0xFF) << 16);
+    else
+        return unknown;
+
+    if (size == 3)
+    {
+        if (s[2] >= 'A' && s[2] <= 'Z')
+            result |= (((s[2] ^ 32) & 0xFF) << 8);
+        else if (s[2] >= 'a' && s[2] <= 'z')
+            result |= ((s[2] & 0xFF) << 8);
+        else
+            return unknown;
+    }
+
+    return result;
+}
+
+#ifdef __cplusplus
+template <typename it_in_utf8>
+#endif
+uaix_static type_codept impl_locale_from_script(it_in_utf8 s, size_t size, type_codept unknown)
+{
+    // EXAMPLE: Zzzz (ISO 15924 code)
+    type_codept result = 0;
+
+    if (size != 4)
+        return unknown;
+
+    if (s[0] >= 'A' && s[0] <= 'Z')
+        result |= ((s[0] & 0xFF) << 24);
+    else if (s[0] >= 'a' && s[0] <= 'z')
+        result |= (((s[0] ^ 32) & 0xFF) << 24);
+    else
+        return unknown;
+
+    if (s[1] >= 'A' && s[1] <= 'Z')
+        result |= (((s[1] ^ 32) & 0xFF) << 16);
+    else if (s[1] >= 'a' && s[1] <= 'z')
+        result |= ((s[1] & 0xFF) << 16);
+    else
+        return unknown;
+
+    if (s[2] >= 'A' && s[2] <= 'Z')
+        result |= (((s[2] ^ 32) & 0xFF) << 8);
+    else if (s[2] >= 'a' && s[2] <= 'z')
+        result |= ((s[2] & 0xFF) << 8);
+    else
+        return unknown;
+
+    if (s[3] >= 'A' && s[3] <= 'Z')
+        result |= ((s[3] ^ 32) & 0xFF);
+    else if (s[3] >= 'a' && s[3] <= 'z')
+        result |= (s[3] & 0xFF);
+    else
+        return unknown;
+
+    return result;
+}
+
+#ifdef __cplusplus
+template <typename it_in_utf8>
+#endif
+uaix_static type_codept impl_locale_from_region(it_in_utf8 s, size_t size, type_codept unknown)
+{
+    // NOTE: Even though it's possible to use numeric codes for script subtag too
+    // it's not handled there because BCP47 allows numeric codes for region subtag only.
+
+    // EXAMPLE: 999 (UN M.49 code)
+    if (size == 3)
+    {
+        if (s[0] >= '0' && s[0] <= '9' &&
+            s[1] >= '0' && s[1] <= '9' &&
+            s[2] >= '0' && s[2] <= '9')
+            return ((s[0] & 0xFF) << 24) | ((s[1] & 0xFF) << 16) | ((s[2] & 0xFF) << 8);
+            // return ((s[0] - 48) * 100) + ((s[1] - 48) * 10) + (s[2] - 48); // REMINDER: Numeric result
+
+        return unknown;
+    }
+
+    // EXAMPLE: ZZ (ISO 3166-1 code)
+    type_codept result = 0;
+
+    if (size != 2)
+        return unknown;
+
+    if (s[0] >= 'A' && s[0] <= 'Z')
+        result |= ((s[0] & 0xFF) << 24);
+    else if (s[0] >= 'a' && s[0] <= 'z')
+        result |= (((s[0] ^ 32) & 0xFF) << 24);
+    else
+        return unknown;
+
+    if (s[1] >= 'A' && s[1] <= 'Z')
+        result |= ((s[1] & 0xFF) << 16);
+    else if (s[1] >= 'a' && s[1] <= 'z')
+        result |= (((s[1] ^ 32) & 0xFF) << 16);
+    else
+        return unknown;
+
+    return result;
+}
+
+#ifdef UNI_ALGO_EXPERIMENTAL
+
+uaix_inline type_codept impl_locale_norm_language(type_codept v, type_codept unknown)
+{
+    // EXAMPLE: en/und (shortest ISO 639 code)
+    type_codept result = 0;
+
+    if (((v >> 24) & 0xFF) >= 'A' && ((v >> 24) & 0xFF) <= 'Z')
+        result |= ((((v >> 24) & 0xFF) ^ 32) << 24);
+    else if (((v >> 24) & 0xFF) >= 'a' && ((v >> 24) & 0xFF) <= 'z')
+        result |= (((v >> 24) & 0xFF) << 24);
+    else
+        return unknown;
+
+    if (((v >> 16) & 0xFF) >= 'A' && ((v >> 16) & 0xFF) <= 'Z')
+        result |= ((((v >> 16) & 0xFF) ^ 32) << 16);
+    else if (((v >> 16) & 0xFF) >= 'a' && ((v >> 16) & 0xFF) <= 'z')
+        result |= (((v >> 16) & 0xFF) << 16);
+    else
+        return unknown;
+
+    if (((v >> 8) & 0xFF) == 0)
+        return result;
+
+    if (((v >> 8) & 0xFF) >= 'A' && ((v >> 8) & 0xFF) <= 'Z')
+        result |= ((((v >> 8) & 0xFF) ^ 32) << 8);
+    else if (((v >> 8) & 0xFF) >= 'a' && ((v >> 8) & 0xFF) <= 'z')
+        result |= (((v >> 8) & 0xFF) << 8);
+    else
+        return unknown;
+
+    if ((v & 0xFF) != 0)
+        return unknown;
+
+    return result;
+}
+
+uaix_inline type_codept impl_locale_norm_script(type_codept v, type_codept unknown)
+{
+    // EXAMPLE: Zzzz (ISO 15924 code)
+    type_codept result = 0;
+
+    if (((v >> 24) & 0xFF) >= 'A' && ((v >> 24) & 0xFF) <= 'Z')
+        result |= (((v >> 24) & 0xFF) << 24);
+    else if (((v >> 24) & 0xFF) >= 'a' && ((v >> 24) & 0xFF) <= 'z')
+        result |= ((((v >> 24) & 0xFF) ^ 32) << 24);
+    else
+        return unknown;
+
+    if (((v >> 16) & 0xFF) >= 'A' && ((v >> 16) & 0xFF) <= 'Z')
+        result |= ((((v >> 16) & 0xFF) ^ 32) << 16);
+    else if (((v >> 16) & 0xFF) >= 'a' && ((v >> 16) & 0xFF) <= 'z')
+        result |= (((v >> 16) & 0xFF) << 16);
+    else
+        return unknown;
+
+    if (((v >> 8) & 0xFF) >= 'A' && ((v >> 8) & 0xFF) <= 'Z')
+        result |= ((((v >> 8) & 0xFF) ^ 32) << 8);
+    else if (((v >> 8) & 0xFF) >= 'a' && ((v >> 8) & 0xFF) <= 'z')
+        result |= (((v >> 8) & 0xFF) << 8);
+    else
+        return unknown;
+
+    if ((v & 0xFF) >= 'A' && (v & 0xFF) <= 'Z')
+        result |= ((v & 0xFF) ^ 32);
+    else if ((v & 0xFF) >= 'a' && (v & 0xFF) <= 'z')
+        result |= (v & 0xFF);
+    else
+        return unknown;
+
+    return result;
+}
+
+uaix_inline type_codept impl_locale_norm_region(type_codept v, type_codept unknown)
+{
+    // EXAMPLE: 999 (UN M.49 code)
+    if (((v >> 24) & 0xFF) >= '0' && ((v >> 24) & 0xFF) <= '9' &&
+        ((v >> 16) & 0xFF) >= '0' && ((v >> 16) & 0xFF) <= '9' &&
+        ((v >> 8)  & 0xFF) >= '0' && ((v >> 8)  & 0xFF) <= '9' && (v & 0xFF) == 0)
+        return (((v >> 24) & 0xFF) << 24) | (((v >> 16) & 0xFF) << 16) | (((v >> 8) & 0xFF) << 8);
+
+    // EXAMPLE: ZZ (ISO 3166-1 code)
+    type_codept result = 0;
+
+    if (((v >> 24) & 0xFF) >= 'A' && ((v >> 24) & 0xFF) <= 'Z')
+        result |= (((v >> 24) & 0xFF) << 24);
+    else if (((v >> 24) & 0xFF) >= 'a' && ((v >> 24) & 0xFF) <= 'z')
+        result |= ((((v >> 24) & 0xFF) ^ 32) << 24);
+    else
+        return unknown;
+
+    if (((v >> 16) & 0xFF) >= 'A' && ((v >> 16) & 0xFF) <= 'Z')
+        result |= (((v >> 16) & 0xFF) << 16);
+    else if (((v >> 16) & 0xFF) >= 'a' && ((v >> 16) & 0xFF) <= 'z')
+        result |= ((((v >> 16) & 0xFF) ^ 32) << 16);
+    else
+        return unknown;
+
+    if (((v >> 8) & 0xFF) != 0)
+        return unknown;
+    if ((v & 0xFF) != 0)
+        return unknown;
+
+    return result;
+}
+
+#endif // UNI_ALGO_EXPERIMENTAL
+
+#if 0
+uaix_inline type_codept impl_locale_script_to_stage(type_codept v)
+{
+    // REMINDER:
+    // x ^ 64 == x - 'A' + 1 (when x >= 'A' && x <= 'Z')
+    // x ^ 96 == x - 'a' + 1 (when x >= 'z' && x <= 'z')
+    // so x fit 5 bits and xxxx = 20 bits and max value is 0xFFFFFF
+
+    // A compiler optimizes this function to around 40 instructions
+    // it is possible to write it better.
+
+    // For example it can be used to get script properties from
+    // cldr/common/properties/scriptMetadata.txt
+    // using two-stage table O(n) approach
+    // but binary search O(log n) probably be better for such particular case.
+
+    type_codept result = 0;
+
+    if (((v >> 24) & 0xFF) >= 'A' && ((v >> 24) & 0xFF) <= 'Z')
+        result |= ((((v >> 24) & 0xFF) ^ 64) << 15);
+    else
+        return 0;
+
+    if (((v >> 16) & 0xFF) >= 'a' && ((v >> 16) & 0xFF) <= 'z')
+        result |= ((((v >> 16) & 0xFF) ^ 96) << 10);
+    else
+        return 0;
+
+    if (((v >> 8) & 0xFF) >= 'a' && ((v >> 8) & 0xFF) <= 'z')
+        result |= ((((v >> 8) & 0xFF) ^ 96) << 5);
+    else
+        return 0;
+
+    if ((v & 0xFF) >= 'a' && (v & 0xFF) <= 'z')
+        result |= ((v & 0xFF) ^ 96);
+    else
+        return 0;
+
+    return result;
+}
+#endif // 0
 
 UNI_ALGO_IMPL_NAMESPACE_END
 
@@ -50219,15 +50826,23 @@ UNI_ALGO_IMPL_NAMESPACE_BEGIN
 // The length of a destination (result) string must be premultiplied with one of these
 // Example: destination_length = source_length * impl_x_function_name
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-uaix_const size_t impl_x_case_map_utf8 = 3;
-uaix_const size_t impl_x_case_map_utf16 = 3;
+uaix_const size_t impl_x_case_map_utf8  = 3; // tag_unicode_unstable_value
+uaix_const size_t impl_x_case_map_utf16 = 3; // tag_unicode_unstable_value
 #else
-uaix_const size_t impl_x_case_map_utf8 = 3;
-uaix_const size_t impl_x_case_map_utf16 = 1;
+uaix_const size_t impl_x_case_map_utf8  = 3; // tag_unicode_unstable_value
+uaix_const size_t impl_x_case_map_utf16 = 1; // tag_unicode_unstable_value
 #endif
+#ifdef __cplusplus
+uaix_const size_t impl_max_case_expand  = 3; // tag_unicode_unstable_value
+#else // tag_synchronize
+#define impl_max_case_expand 3
+#endif
+// All these values are Unicode unstable values even though Case_Folding is stable,
+// but Lowercase_Mapping, Uppercase_Mapping, Titlecase_Mapping are not stable.
+// https://www.unicode.org/policies/stability_policy.html#Property_Value
 
-// Modes for casemap functions
-//uaix_const int impl_casemap_mode_null = 0;
+// Modes for case map functions
+//uaix_const int impl_case_map_mode_null     = 0;
 uaix_const int impl_case_map_mode_casefold   = 1;
 uaix_const int impl_case_map_mode_uppercase  = 2;
 uaix_const int impl_case_map_mode_lowercase  = 3;
@@ -50240,6 +50855,17 @@ uaix_const type_codept prop_Uppercase        = 1 << 3;
 uaix_const type_codept prop_Soft_Dotted      = 1 << 4; // impl_case_locale.h
 uaix_const type_codept prop_CCC_NOT_0        = 1 << 5; // impl_case_locale.h
 uaix_const type_codept prop_CCC_230          = 1 << 6; // impl_case_locale.h
+
+struct case_special_buffer
+{
+    uaix_array(type_codept, cps, impl_max_case_expand);
+};
+
+struct case_special_pair
+{
+    size_t size;
+    size_t count;
+};
 
 uaix_always_inline
 uaix_static type_codept stages_lower(type_codept c)
@@ -50295,14 +50921,14 @@ uaix_static type_codept stages_case_prop(type_codept c)
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
 
 uaix_always_inline
-uaix_static size_t stages_special_fold(type_codept c, type_codept special[3])
+uaix_static size_t stages_special_fold(type_codept c, struct case_special_buffer* const buffer)
 {
     if (c <= 0xFFFF)
     {
         size_t n = stages(c, stage1_special_fold, stage2_special_fold);
-        special[0] = stage3_special_fold[n][1];
-        special[1] = stage3_special_fold[n][2];
-        special[2] = stage3_special_fold[n][3];
+        buffer->cps[0] = stage3_special_fold[n][1];
+        buffer->cps[1] = stage3_special_fold[n][2];
+        buffer->cps[2] = stage3_special_fold[n][3];
         return stage3_special_fold[n][0];
     }
     return 0;
@@ -50322,14 +50948,14 @@ uaix_static bool stages_special_fold_check(type_codept c)
 }
 
 uaix_always_inline
-uaix_static size_t stages_special_upper(type_codept c, type_codept special[3])
+uaix_static size_t stages_special_upper(type_codept c, struct case_special_buffer* const buffer)
 {
     if (c <= 0xFFFF)
     {
         size_t n = stages(c, stage1_special_upper, stage2_special_upper);
-        special[0] = stage3_special_upper[n][1];
-        special[1] = stage3_special_upper[n][2];
-        special[2] = stage3_special_upper[n][3];
+        buffer->cps[0] = stage3_special_upper[n][1];
+        buffer->cps[1] = stage3_special_upper[n][2];
+        buffer->cps[2] = stage3_special_upper[n][3];
         return stage3_special_upper[n][0];
     }
     return 0;
@@ -50351,14 +50977,14 @@ uaix_static bool stages_special_upper_check(type_codept c)
 #ifndef UNI_ALGO_DISABLE_BREAK_WORD
 
 uaix_always_inline
-uaix_static size_t stages_special_title(type_codept c, type_codept special[3])
+uaix_static size_t stages_special_title(type_codept c, struct case_special_buffer* const buffer)
 {
     if (c <= 0xFFFF)
     {
         size_t n = stages(c, stage1_special_title, stage2_special_title);
-        special[0] = stage3_special_title[n][1];
-        special[1] = stage3_special_title[n][2];
-        special[2] = stage3_special_title[n][3];
+        buffer->cps[0] = stage3_special_title[n][1];
+        buffer->cps[1] = stage3_special_title[n][2];
+        buffer->cps[2] = stage3_special_title[n][3];
         return stage3_special_title[n][0];
     }
     return 0;
@@ -50386,24 +51012,44 @@ uaix_static bool stages_special_title_check(type_codept c)
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
-uaix_static bool case_final_sigma_utf8(it_in_utf8 from, it_end_utf8 to, bool reverse)
+uaix_static bool case_final_sigma_fwd_utf8(it_in_utf8 first, it_end_utf8 last)
 {
     /* Final_Sigma special case from The Unicode Standard:
      * C is preceded by a sequence consisting of a cased letter and then zero or more
      * case-ignorable characters, and C is not followed by a sequence consisting of zero
      * or more case-ignorable characters and then a cased letter.
      * \p{cased}(\p{case-ignorable})* U+03A3 !((\p{case-ignorable})*\p{cased})
+     * The algorithm has two parts: this forward function and reverse function below.
      */
 
-    it_in_utf8 s = from;
-    type_codept c = 0;
+    it_in_utf8 src = first;
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    while (s != to)
+    while (src != last)
     {
-        if (reverse)
-            s = iter_rev_utf8(to, s, &c, iter_replacement);
-        else
-            s = iter_utf8(s, to, &c, iter_replacement);
+        src = iter_utf8(src, last, &c, iter_replacement);
+
+        type_codept prop = stages_case_prop(c);
+
+        if (prop & prop_Cased_Ignorable)
+            continue;
+        return (prop & prop_Cased) ? true : false;
+    }
+
+    return false;
+}
+
+#ifdef __cplusplus
+template<typename it_in_utf8>
+#endif
+uaix_static bool case_final_sigma_rev_utf8(it_in_utf8 first, it_in_utf8 last)
+{
+    it_in_utf8 src = last;
+    type_codept c = 0; // tag_can_be_uninitialized
+
+    while (src != first)
+    {
+        src = iter_rev_utf8(first, src, &c, iter_replacement);
 
         type_codept prop = stages_case_prop(c);
 
@@ -50418,17 +51064,36 @@ uaix_static bool case_final_sigma_utf8(it_in_utf8 from, it_end_utf8 to, bool rev
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
-uaix_static bool case_final_sigma_utf16(it_in_utf16 from, it_end_utf16 to, bool reverse)
+uaix_static bool case_final_sigma_fwd_utf16(it_in_utf16 first, it_end_utf16 last)
 {
-    it_in_utf16 s = from;
-    type_codept c = 0;
+    it_in_utf16 src = first;
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    while (s != to)
+    while (src != last)
     {
-        if (reverse)
-            s = iter_rev_utf16(to, s, &c, iter_replacement);
-        else
-            s = iter_utf16(s, to, &c, iter_replacement);
+        src = iter_utf16(src, last, &c, iter_replacement);
+
+        type_codept prop = stages_case_prop(c);
+
+        if (prop & prop_Cased_Ignorable)
+            continue;
+        return (prop & prop_Cased) ? true : false;
+    }
+
+    return false;
+}
+
+#ifdef __cplusplus
+template<typename it_in_utf16>
+#endif
+uaix_static bool case_final_sigma_rev_utf16(it_in_utf16 first, it_in_utf16 last)
+{
+    it_in_utf16 src = last;
+    type_codept c = 0; // tag_can_be_uninitialized
+
+    while (src != first)
+    {
+        src = iter_rev_utf16(first, src, &c, iter_replacement);
 
         type_codept prop = stages_case_prop(c);
 
@@ -50468,7 +51133,7 @@ uaix_static size_t impl_case_map_utf8(it_in_utf8 first, it_end_utf8 last, it_out
 {
     it_in_utf8 src = first;
     it_out_utf8 dst = result;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     if (mode == impl_case_map_mode_lowercase)
     {
@@ -50480,7 +51145,7 @@ uaix_static size_t impl_case_map_utf8(it_in_utf8 first, it_end_utf8 last, it_out
             src = iter_utf8(src, last, &c, iter_replacement);
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-            if (c == 0x0130) // Handled in place (checked in generator)
+            if (c == 0x0130) // tag_lowercase_special
             {
                 *dst++ = (type_char8)(type_codept)0x69;
                 *dst++ = (type_char8)(type_codept)0xCC;
@@ -50489,8 +51154,8 @@ uaix_static size_t impl_case_map_utf8(it_in_utf8 first, it_end_utf8 last, it_out
             }
             if (c == 0x03A3) // Final_Sigma
             {
-                if (!case_final_sigma_utf8(src, last, false) &&
-                    case_final_sigma_utf8(prev, first, true))
+                if (!case_final_sigma_fwd_utf8(src, last) &&
+                    case_final_sigma_rev_utf8(first, prev))
                 {
                     *dst++ = (type_char8)(type_codept)0xCF;
                     *dst++ = (type_char8)(type_codept)0x82;
@@ -50512,15 +51177,13 @@ uaix_static size_t impl_case_map_utf8(it_in_utf8 first, it_end_utf8 last, it_out
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
             if (stages_special_upper_check(c))
             {
-                type_codept special[3];
-                size_t number = stages_special_upper(c, special);
-                if (number)
-                {
-                    for (size_t i = 0; i < number; ++i)
-                        dst = codepoint_to_utf8(special[i], dst);
+                struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+                size_t size = stages_special_upper(c, &buffer);
 
-                    continue;
-                }
+                for (size_t i = 0; i < size; ++i)
+                    dst = codepoint_to_utf8(buffer.cps[i], dst);
+
+                continue;
             }
 #endif
             c = stages_upper(c);
@@ -50537,15 +51200,13 @@ uaix_static size_t impl_case_map_utf8(it_in_utf8 first, it_end_utf8 last, it_out
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
             if (stages_special_fold_check(c))
             {
-                type_codept special[3];
-                size_t number = stages_special_fold(c, special);
-                if (number)
-                {
-                    for (size_t i = 0; i < number; ++i)
-                        dst = codepoint_to_utf8(special[i], dst);
+                struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+                size_t size = stages_special_fold(c, &buffer);
 
-                    continue;
-                }
+                for (size_t i = 0; i < size; ++i)
+                    dst = codepoint_to_utf8(buffer.cps[i], dst);
+
+                continue;
             }
 #endif
             c = stages_fold(c);
@@ -50571,7 +51232,7 @@ uaix_static size_t impl_case_map_utf16(it_in_utf16 first, it_end_utf16 last, it_
 {
     it_in_utf16 src = first;
     it_out_utf16 dst = result;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     if (mode == impl_case_map_mode_lowercase)
     {
@@ -50583,7 +51244,7 @@ uaix_static size_t impl_case_map_utf16(it_in_utf16 first, it_end_utf16 last, it_
             src = iter_utf16(src, last, &c, iter_replacement);
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-            if (c == 0x0130) // Handled in place (checked in generator)
+            if (c == 0x0130) // tag_lowercase_special
             {
                 *dst++ = (type_char16)0x0069;
                 *dst++ = (type_char16)0x0307;
@@ -50591,8 +51252,8 @@ uaix_static size_t impl_case_map_utf16(it_in_utf16 first, it_end_utf16 last, it_
             }
             if (c == 0x03A3) // Final_Sigma
             {
-                if (!case_final_sigma_utf16(src, last, false) &&
-                    case_final_sigma_utf16(prev, first, true))
+                if (!case_final_sigma_fwd_utf16(src, last) &&
+                    case_final_sigma_rev_utf16(first, prev))
                 {
                     *dst++ = (type_char16)0x03C2;
                     continue;
@@ -50613,15 +51274,13 @@ uaix_static size_t impl_case_map_utf16(it_in_utf16 first, it_end_utf16 last, it_
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
             if (stages_special_upper_check(c))
             {
-                type_codept special[3];
-                size_t number = stages_special_upper(c, special);
-                if (number)
-                {
-                    for (size_t i = 0; i < number; ++i)
-                        dst = codepoint_to_utf16(special[i], dst);
+                struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+                size_t size = stages_special_upper(c, &buffer);
 
-                    continue;
-                }
+                for (size_t i = 0; i < size; ++i)
+                    dst = codepoint_to_utf16(buffer.cps[i], dst);
+
+                continue;
             }
 #endif
             c = stages_upper(c);
@@ -50638,15 +51297,13 @@ uaix_static size_t impl_case_map_utf16(it_in_utf16 first, it_end_utf16 last, it_
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
             if (stages_special_fold_check(c))
             {
-                type_codept special[3];
-                size_t number = stages_special_fold(c, special);
-                if (number)
-                {
-                    for (size_t i = 0; i < number; ++i)
-                        dst = codepoint_to_utf16(special[i], dst);
+                struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+                size_t size = stages_special_fold(c, &buffer);
 
-                    continue;
-                }
+                for (size_t i = 0; i < size; ++i)
+                    dst = codepoint_to_utf16(buffer.cps[i], dst);
+
+                continue;
             }
 #endif
             c = stages_fold(c);
@@ -50668,23 +51325,23 @@ uaix_static size_t impl_case_map_utf16(it_in_utf16 first, it_end_utf16 last, it_
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf8 iter_fold_utf8(it_in_utf8 first, it_end_utf8 last, type_codept* codepoint,
-                                      size_t* count, size_t* number, type_codept special[3])
+uaix_static it_in_utf8 iter_fold_utf8(it_in_utf8 first, it_end_utf8 last, type_codept* const codepoint,
+                                      struct case_special_pair* const pair, struct case_special_buffer* const buffer)
 {
     it_in_utf8 src = first;
 
-    if (*count == 0)
+    if (pair->count == 0)
     {
         src = iter_utf8(first, last, codepoint, iter_replacement);
 
         if (stages_special_fold_check(*codepoint))
         {
-            *number = stages_special_fold(*codepoint, special);
-            *count = *number;
+            pair->size = stages_special_fold(*codepoint, buffer);
+            pair->count = pair->size;
         }
     }
-    if (*count != 0)
-        *codepoint = special[*number - (*count)--];
+    if (pair->count != 0)
+        *codepoint = buffer->cps[pair->size - pair->count--];
 
     return src;
 }
@@ -50693,23 +51350,23 @@ uaix_static it_in_utf8 iter_fold_utf8(it_in_utf8 first, it_end_utf8 last, type_c
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
 uaix_always_inline_tmpl
-uaix_static it_in_utf16 iter_fold_utf16(it_in_utf16 first, it_end_utf16 last, type_codept* codepoint,
-                                        size_t* count, size_t* number, type_codept special[3])
+uaix_static it_in_utf16 iter_fold_utf16(it_in_utf16 first, it_end_utf16 last, type_codept* const codepoint,
+                                        struct case_special_pair* const pair, struct case_special_buffer* const buffer)
 {
     it_in_utf16 src = first;
 
-    if (*count == 0)
+    if (pair->count == 0)
     {
         src = iter_utf16(first, last, codepoint, iter_replacement);
 
         if (stages_special_fold_check(*codepoint))
         {
-            *number = stages_special_fold(*codepoint, special);
-            *count = *number;
+            pair->size = stages_special_fold(*codepoint, buffer);
+            pair->count = pair->size;
         }
     }
-    if (*count != 0)
-        *codepoint = special[*number - (*count)--];
+    if (pair->count != 0)
+        *codepoint = buffer->cps[pair->size - pair->count--];
 
     return src;
 }
@@ -50727,13 +51384,13 @@ uaix_static int impl_case_compare_utf8(it_in_utf8 first1, it_end_utf8 last1,
 {
     it_in_utf8 src1 = first1;
     it_in_utf8 src2 = first2;
-    type_codept c1 = 0;
-    type_codept c2 = 0;
+    type_codept c1 = 0; // tag_can_be_uninitialized
+    type_codept c2 = 0; // tag_can_be_uninitialized
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    type_codept special1[3];
-    type_codept special2[3];
-    size_t count1 = 0, number1 = 0;
-    size_t count2 = 0, number2 = 0;
+    struct case_special_buffer buffer1 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_buffer buffer2 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_pair pair1 = {0, 0}; // tag_must_be_initialized
+    struct case_special_pair pair2 = {0, 0}; // tag_must_be_initialized
 #endif
 
     // Optimization for long mostly equal strings
@@ -50766,10 +51423,10 @@ uaix_static int impl_case_compare_utf8(it_in_utf8 first1, it_end_utf8 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    while ((src1 != last1 || count1) && (src2 != last2 || count2))
+    while ((src1 != last1 || pair1.count) && (src2 != last2 || pair2.count))
     {
-        src1 = iter_fold_utf8(src1, last1, &c1, &count1, &number1, special1);
-        src2 = iter_fold_utf8(src2, last2, &c2, &count2, &number2, special2);
+        src1 = iter_fold_utf8(src1, last1, &c1, &pair1, &buffer1);
+        src2 = iter_fold_utf8(src2, last2, &c2, &pair2, &buffer2);
 #else
     while (src1 != last1 && src2 != last2)
     {
@@ -50787,7 +51444,7 @@ uaix_static int impl_case_compare_utf8(it_in_utf8 first1, it_end_utf8 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    return (src2 == last2 && count2 == 0) - (src1 == last1 && count1 == 0);
+    return (src2 == last2 && pair2.count == 0) - (src1 == last1 && pair1.count == 0);
 #else
     return (src2 == last2) - (src1 == last1);
 #endif
@@ -50804,13 +51461,13 @@ uaix_static int impl_case_compare_utf16(it_in_utf16 first1, it_end_utf16 last1,
 {
     it_in_utf16 src1 = first1;
     it_in_utf16 src2 = first2;
-    type_codept c1 = 0;
-    type_codept c2 = 0;
+    type_codept c1 = 0; // tag_can_be_uninitialized
+    type_codept c2 = 0; // tag_can_be_uninitialized
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    type_codept special1[3];
-    type_codept special2[3];
-    size_t count1 = 0, number1 = 0;
-    size_t count2 = 0, number2 = 0;
+    struct case_special_buffer buffer1 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_buffer buffer2 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_pair pair1 = {0, 0}; // tag_must_be_initialized
+    struct case_special_pair pair2 = {0, 0}; // tag_must_be_initialized
 #endif
 
     // Optimization for long mostly equal strings
@@ -50843,10 +51500,10 @@ uaix_static int impl_case_compare_utf16(it_in_utf16 first1, it_end_utf16 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    while ((src1 != last1 || count1) && (src2 != last2 || count2))
+    while ((src1 != last1 || pair1.count) && (src2 != last2 || pair2.count))
     {
-        src1 = iter_fold_utf16(src1, last1, &c1, &count1, &number1, special1);
-        src2 = iter_fold_utf16(src2, last2, &c2, &count2, &number2, special2);
+        src1 = iter_fold_utf16(src1, last1, &c1, &pair1, &buffer1);
+        src2 = iter_fold_utf16(src2, last2, &c2, &pair2, &buffer2);
 #else
     while (src1 != last1 && src2 != last2)
     {
@@ -50864,7 +51521,7 @@ uaix_static int impl_case_compare_utf16(it_in_utf16 first1, it_end_utf16 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    return (src2 == last2 && count2 == 0) - (src1 == last1 && count1 == 0);
+    return (src2 == last2 && pair2.count == 0) - (src1 == last1 && pair1.count == 0);
 #else
     return (src2 == last2) - (src1 == last1);
 #endif
@@ -50883,13 +51540,13 @@ uaix_static int impl_case_collate_utf8(it_in_utf8 first1, it_end_utf8 last1,
 {
     it_in_utf8 src1 = first1;
     it_in_utf8 src2 = first2;
-    type_codept c1 = 0;
-    type_codept c2 = 0;
+    type_codept c1 = 0; // tag_can_be_uninitialized
+    type_codept c2 = 0; // tag_can_be_uninitialized
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    type_codept special1[3];
-    type_codept special2[3];
-    size_t count1 = 0, number1 = 0;
-    size_t count2 = 0, number2 = 0;
+    struct case_special_buffer buffer1 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_buffer buffer2 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_pair pair1 = {0, 0}; // tag_must_be_initialized
+    struct case_special_pair pair2 = {0, 0}; // tag_must_be_initialized
 #endif
 
     // Optimization for long mostly equal strings
@@ -50928,10 +51585,10 @@ uaix_static int impl_case_collate_utf8(it_in_utf8 first1, it_end_utf8 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    while ((src1 != last1 || count1) && (src2 != last2 || count2))
+    while ((src1 != last1 || pair1.count) && (src2 != last2 || pair2.count))
     {
-        src1 = iter_fold_utf8(src1, last1, &c1, &count1, &number1, special1);
-        src2 = iter_fold_utf8(src2, last2, &c2, &count2, &number2, special2);
+        src1 = iter_fold_utf8(src1, last1, &c1, &pair1, &buffer1);
+        src2 = iter_fold_utf8(src2, last2, &c2, &pair2, &buffer2);
 #else
     while (src1 != last1 && src2 != last2)
     {
@@ -50952,7 +51609,7 @@ uaix_static int impl_case_collate_utf8(it_in_utf8 first1, it_end_utf8 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    return (src2 == last2 && count2 == 0) - (src1 == last1 && count1 == 0);
+    return (src2 == last2 && pair2.count == 0) - (src1 == last1 && pair1.count == 0);
 #else
     return (src2 == last2) - (src1 == last1);
 #endif
@@ -50969,13 +51626,13 @@ uaix_static int impl_case_collate_utf16(it_in_utf16 first1, it_end_utf16 last1,
 {
     it_in_utf16 src1 = first1;
     it_in_utf16 src2 = first2;
-    type_codept c1 = 0;
-    type_codept c2 = 0;
+    type_codept c1 = 0; // tag_can_be_uninitialized
+    type_codept c2 = 0; // tag_can_be_uninitialized
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    type_codept special1[3];
-    type_codept special2[3];
-    size_t count1 = 0, number1 = 0;
-    size_t count2 = 0, number2 = 0;
+    struct case_special_buffer buffer1 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_buffer buffer2 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_pair pair1 = {0, 0}; // tag_must_be_initialized
+    struct case_special_pair pair2 = {0, 0}; // tag_must_be_initialized
 #endif
 
     // Optimization for long mostly equal strings
@@ -51014,10 +51671,10 @@ uaix_static int impl_case_collate_utf16(it_in_utf16 first1, it_end_utf16 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    while ((src1 != last1 || count1) && (src2 != last2 || count2))
+    while ((src1 != last1 || pair1.count) && (src2 != last2 || pair2.count))
     {
-        src1 = iter_fold_utf16(src1, last1, &c1, &count1, &number1, special1);
-        src2 = iter_fold_utf16(src2, last2, &c2, &count2, &number2, special2);
+        src1 = iter_fold_utf16(src1, last1, &c1, &pair1, &buffer1);
+        src2 = iter_fold_utf16(src2, last2, &c2, &pair2, &buffer2);
 #else
     while (src1 != last1 && src2 != last2)
     {
@@ -51038,7 +51695,7 @@ uaix_static int impl_case_collate_utf16(it_in_utf16 first1, it_end_utf16 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    return (src2 == last2 && count2 == 0) - (src1 == last1 && count1 == 0);
+    return (src2 == last2 && pair2.count == 0) - (src1 == last1 && pair1.count == 0);
 #else
     return (src2 == last2) - (src1 == last1);
 #endif
@@ -51054,19 +51711,19 @@ template<typename it_in_utf8, typename it_end_utf8>
 #endif
 uaix_static bool impl_case_search_utf8(it_in_utf8 first1, it_end_utf8 last1,
                                        it_in_utf8 first2, it_end_utf8 last2, bool caseless,
-                                       size_t* pos, size_t* end)
+                                       size_t* const pos, size_t* const end)
 {
     it_in_utf8 src1 = first1;
     it_in_utf8 src2 = first2;
     it_in_utf8 back = src1;
     it_in_utf8 prev = src1;
-    type_codept c1 = 0;
-    type_codept c2 = 0;
+    type_codept c1 = 0; // tag_can_be_uninitialized
+    type_codept c2 = 0; // tag_can_be_uninitialized
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    type_codept special1[3];
-    type_codept special2[3];
-    size_t count1 = 0, number1 = 0;
-    size_t count2 = 0, number2 = 0;
+    struct case_special_buffer buffer1 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_buffer buffer2 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_pair pair1 = {0, 0}; // tag_must_be_initialized
+    struct case_special_pair pair2 = {0, 0}; // tag_must_be_initialized
 #endif
 
     if (!caseless)
@@ -51099,10 +51756,10 @@ uaix_static bool impl_case_search_utf8(it_in_utf8 first1, it_end_utf8 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    while ((src1 != last1 || count1) && (src2 != last2 || count2))
+    while ((src1 != last1 || pair1.count) && (src2 != last2 || pair2.count))
     {
-        src1 = iter_fold_utf8(src1, last1, &c1, &count1, &number1, special1);
-        src2 = iter_fold_utf8(src2, last2, &c2, &count2, &number2, special2);
+        src1 = iter_fold_utf8(src1, last1, &c1, &pair1, &buffer1);
+        src2 = iter_fold_utf8(src2, last2, &c2, &pair2, &buffer2);
 #else
     while (src1 != last1 && src2 != last2)
     {
@@ -51119,10 +51776,10 @@ uaix_static bool impl_case_search_utf8(it_in_utf8 first1, it_end_utf8 last1,
         c2 = stages_fold(c2);
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-        if (c1 != c2 || (src2 == last2 && !count2 && count1)) // Restart
+        if (c1 != c2 || (src2 == last2 && !pair2.count && pair1.count)) // Restart
         {
-            count2 = 0;
-            count1 = 0;
+            pair2.count = 0;
+            pair1.count = 0;
 #else
         if (c1 != c2) // Restart
         {
@@ -51135,7 +51792,7 @@ uaix_static bool impl_case_search_utf8(it_in_utf8 first1, it_end_utf8 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    if (src2 == last2 && count2 == 0)
+    if (src2 == last2 && pair2.count == 0)
 #else
     if (src2 == last2)
 #endif
@@ -51156,19 +51813,19 @@ template<typename it_in_utf16, typename it_end_utf16>
 #endif
 uaix_static bool impl_case_search_utf16(it_in_utf16 first1, it_end_utf16 last1,
                                         it_in_utf16 first2, it_end_utf16 last2, bool caseless,
-                                        size_t* pos, size_t* end)
+                                        size_t* const pos, size_t* const end)
 {
     it_in_utf16 src1 = first1;
     it_in_utf16 src2 = first2;
     it_in_utf16 back = src1;
     it_in_utf16 prev = src1;
-    type_codept c1 = 0;
-    type_codept c2 = 0;
+    type_codept c1 = 0; // tag_can_be_uninitialized
+    type_codept c2 = 0; // tag_can_be_uninitialized
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    type_codept special1[3];
-    type_codept special2[3];
-    size_t count1 = 0, number1 = 0;
-    size_t count2 = 0, number2 = 0;
+    struct case_special_buffer buffer1 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_buffer buffer2 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_pair pair1 = {0, 0}; // tag_must_be_initialized
+    struct case_special_pair pair2 = {0, 0}; // tag_must_be_initialized
 #endif
 
     if (!caseless)
@@ -51201,10 +51858,10 @@ uaix_static bool impl_case_search_utf16(it_in_utf16 first1, it_end_utf16 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    while ((src1 != last1 || count1) && (src2 != last2 || count2))
+    while ((src1 != last1 || pair1.count) && (src2 != last2 || pair2.count))
     {
-        src1 = iter_fold_utf16(src1, last1, &c1, &count1, &number1, special1);
-        src2 = iter_fold_utf16(src2, last2, &c2, &count2, &number2, special2);
+        src1 = iter_fold_utf16(src1, last1, &c1, &pair1, &buffer1);
+        src2 = iter_fold_utf16(src2, last2, &c2, &pair2, &buffer2);
 #else
     while (src1 != last1 && src2 != last2)
     {
@@ -51221,10 +51878,10 @@ uaix_static bool impl_case_search_utf16(it_in_utf16 first1, it_end_utf16 last1,
         c2 = stages_fold(c2);
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-        if (c1 != c2 || (src2 == last2 && !count2 && count1)) // Restart
+        if (c1 != c2 || (src2 == last2 && !pair2.count && pair1.count)) // Restart
         {
-            count2 = 0;
-            count1 = 0;
+            pair2.count = 0;
+            pair1.count = 0;
 #else
         if (c1 != c2) // Restart
         {
@@ -51237,7 +51894,7 @@ uaix_static bool impl_case_search_utf16(it_in_utf16 first1, it_end_utf16 last1,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    if (src2 == last2 && count2 == 0)
+    if (src2 == last2 && pair2.count == 0)
 #else
     if (src2 == last2)
 #endif
@@ -51262,16 +51919,16 @@ uaix_static bool impl_case_like_utf8(it_in_utf8 first1, it_end_utf8 last1,
     it_in_utf8 back1 = src1;
     it_in_utf8 prev1 = src1;
     it_in_utf8 back2 = src2;
-    type_codept c1 = 0;
-    type_codept c2 = 0;
-    bool skip1 = false;
-    bool multi = false;
-    bool prev_escape = false;
+    type_codept c1 = 0; // tag_can_be_uninitialized
+    type_codept c2 = 0; // tag_can_be_uninitialized
+    bool skip1 = false; // tag_must_be_initialized
+    bool multi = false; // tag_must_be_initialized
+    bool prev_escape = false; // tag_must_be_initialized
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    type_codept special1[3];
-    type_codept special2[3];
-    size_t count1 = 0, number1 = 0;
-    size_t count2 = 0, number2 = 0;
+    struct case_special_buffer buffer1 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_buffer buffer2 = {{0}}; // tag_can_be_uninitialized
+    struct case_special_pair pair1 = {0, 0}; // tag_must_be_initialized
+    struct case_special_pair pair2 = {0, 0}; // tag_must_be_initialized
 #endif
 
     // Only ASCII is supported for all and one in a pattern
@@ -51289,13 +51946,13 @@ uaix_static bool impl_case_like_utf8(it_in_utf8 first1, it_end_utf8 last1,
         return false;
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    while ((src1 != last1 || count1 || skip1) && (src2 != last2 || count2))
+    while ((src1 != last1 || pair1.count || skip1) && (src2 != last2 || pair2.count))
     {
         if (skip1)
             skip1 = false;
         else
-            src1 = iter_fold_utf8(src1, last1, &c1, &count1, &number1, special1);
-        src2 = iter_fold_utf8(src2, last2, &c2, &count2, &number2, special2);
+            src1 = iter_fold_utf8(src1, last1, &c1, &pair1, &buffer1);
+        src2 = iter_fold_utf8(src2, last2, &c2, &pair2, &buffer2);
 #else
     while ((src1 != last1 || skip1) && src2 != last2)
     {
@@ -51341,10 +51998,10 @@ uaix_static bool impl_case_like_utf8(it_in_utf8 first1, it_end_utf8 last1,
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
         if (c1 != c2
             || (src2 != last2 && ((type_codept)*src2 == all || (type_codept)*src2 == one)
-            && !count2 && count1)) // Restart
+            && !pair2.count && pair1.count)) // Restart
         {
-            count2 = 0;
-            count1 = 0;
+            pair2.count = 0;
+            pair1.count = 0;
 #else
         if (c1 != c2) // Restart
         {
@@ -51367,8 +52024,8 @@ uaix_static bool impl_case_like_utf8(it_in_utf8 first1, it_end_utf8 last1,
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
     // Test: "abc123xyz789" "%abc%xyz%"
-    //if ((src1 == last1 && count1 == 0) || (first2 == last2 || c2 == all)) // second empty = not match
-    if ((src1 == last1 && count1 == 0) || (first2 != last2 && c2 == all)) // second empty = match
+    //if ((src1 == last1 && pair1.count == 0) || (first2 == last2 || c2 == all)) // second empty = not match
+    if ((src1 == last1 && pair1.count == 0) || (first2 != last2 && c2 == all)) // second empty = match
     {
 #else
     //if (src1 == last1 || (first2 == last2 || c2 == all)) // second empty = not match
@@ -51403,12 +52060,12 @@ uaix_static size_t case_title_utf8(it_in_utf8 first, it_end_utf8 last, it_out_ut
     it_in_utf8 brk = first;
     it_in_utf8 prev_brk = first;
     it_out_utf8 dst = result;
-    type_codept c = 0;
-    bool found_break = false;
-    bool make_lower = false;
+    type_codept c = 0; // tag_can_be_uninitialized
+    bool found_break = false; // tag_must_be_initialized
+    bool make_lower = false; // tag_must_be_initialized
 
     type_codept word_prop = 0; // Not used here
-    struct impl_break_word_state state = {0,0,0,0,0,0,0};
+    struct impl_break_word_state state = {0,0,0,0,0,0,0}; // tag_can_be_uninitialized
     impl_break_word_state_reset(&state);
 
     while (src != last)
@@ -51450,15 +52107,13 @@ uaix_static size_t case_title_utf8(it_in_utf8 first, it_end_utf8 last, it_out_ut
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
                 if (stages_special_title_check(c))
                 {
-                    type_codept special[3];
-                    size_t number = stages_special_title(c, special);
-                    if (number)
-                    {
-                        for (size_t i = 0; i < number; ++i)
-                            dst = codepoint_to_utf8(special[i], dst);
+                    struct case_special_buffer buffer = {{0}};
+                    size_t size = stages_special_title(c, &buffer);
 
-                        continue;
-                    }
+                    for (size_t i = 0; i < size; ++i)
+                        dst = codepoint_to_utf8(buffer.cps[i], dst);
+
+                    continue;
                 }
 #endif
                 c = stages_title(c);
@@ -51467,7 +52122,7 @@ uaix_static size_t case_title_utf8(it_in_utf8 first, it_end_utf8 last, it_out_ut
         else
         {
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-            if (c == 0x0130) // Handled in place (checked in generator)
+            if (c == 0x0130) // tag_lowercase_special
             {
                 *dst++ = (type_char8)(type_codept)0x69;
                 *dst++ = (type_char8)(type_codept)0xCC;
@@ -51476,8 +52131,8 @@ uaix_static size_t case_title_utf8(it_in_utf8 first, it_end_utf8 last, it_out_ut
             }
             if (c == 0x03A3) // Final_Sigma
             {
-                if (!case_final_sigma_utf8(src, last, false) &&
-                    case_final_sigma_utf8(prev, first, true))
+                if (!case_final_sigma_fwd_utf8(src, last) &&
+                    case_final_sigma_rev_utf8(first, prev))
                 {
                     *dst++ = (type_char8)(type_codept)0xCF;
                     *dst++ = (type_char8)(type_codept)0x82;
@@ -51503,12 +52158,12 @@ uaix_static size_t case_title_utf16(it_in_utf16 first, it_end_utf16 last, it_out
     it_in_utf16 brk = first;
     it_in_utf16 prev_brk = first;
     it_out_utf16 dst = result;
-    type_codept c = 0;
-    bool found_break = false;
-    bool make_lower = false;
+    type_codept c = 0; // tag_can_be_uninitialized
+    bool found_break = false; // tag_must_be_initialized
+    bool make_lower = false; // tag_must_be_initialized
 
     type_codept word_prop = 0; // Not used here
-    struct impl_break_word_state state = {0,0,0,0,0,0,0};
+    struct impl_break_word_state state = {0,0,0,0,0,0,0}; // tag_can_be_uninitialized
     impl_break_word_state_reset(&state);
 
     while (src != last)
@@ -51550,15 +52205,13 @@ uaix_static size_t case_title_utf16(it_in_utf16 first, it_end_utf16 last, it_out
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
                 if (stages_special_title_check(c))
                 {
-                    type_codept special[3];
-                    size_t number = stages_special_title(c, special);
-                    if (number)
-                    {
-                        for (size_t i = 0; i < number; ++i)
-                            dst = codepoint_to_utf16(special[i], dst);
+                    struct case_special_buffer buffer = {{0}};
+                    size_t size = stages_special_title(c, &buffer);
 
-                        continue;
-                    }
+                    for (size_t i = 0; i < size; ++i)
+                        dst = codepoint_to_utf16(buffer.cps[i], dst);
+
+                    continue;
                 }
 #endif
                 c = stages_title(c);
@@ -51567,7 +52220,7 @@ uaix_static size_t case_title_utf16(it_in_utf16 first, it_end_utf16 last, it_out
         else
         {
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-            if (c == 0x0130) // Handled in place (checked in generator)
+            if (c == 0x0130) // tag_lowercase_special
             {
                 *dst++ = (type_char16)0x0069;
                 *dst++ = (type_char16)0x0307;
@@ -51575,8 +52228,8 @@ uaix_static size_t case_title_utf16(it_in_utf16 first, it_end_utf16 last, it_out
             }
             else if (c == 0x03A3) // Final_Sigma
             {
-                if (!case_final_sigma_utf16(src, last, false) &&
-                    case_final_sigma_utf16(prev, first, true))
+                if (!case_final_sigma_fwd_utf16(src, last) &&
+                    case_final_sigma_rev_utf16(first, prev))
                 {
                     *dst++ = (type_char16)0x03C2;
                     continue;
@@ -51601,12 +52254,14 @@ uaix_static size_t case_title_utf16(it_in_utf16 first, it_end_utf16 last, it_out
 #ifndef UNI_ALGO_DISABLE_COLLATE
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-uaix_const size_t impl_x_case_sortkey_utf8 = 5;
-uaix_const size_t impl_x_case_sortkey_utf16 = 9;
+uaix_const size_t impl_x_case_sortkey_utf8  = 5; // tag_unicode_stable_value
+uaix_const size_t impl_x_case_sortkey_utf16 = 9; // tag_unicode_stable_value
 #else
-uaix_const size_t impl_x_case_sortkey_utf8 = 3;
-uaix_const size_t impl_x_case_sortkey_utf16 = 3;
+uaix_const size_t impl_x_case_sortkey_utf8  = 3; // tag_unicode_stable_value
+uaix_const size_t impl_x_case_sortkey_utf16 = 3; // tag_unicode_stable_value
 #endif
+// All these values are Unicode stable values because Case_Folding is stable,
+// https://www.unicode.org/policies/stability_policy.html#Property_Value
 
 #ifdef __cplusplus
 template<typename it_out_utf8>
@@ -51634,10 +52289,10 @@ uaix_static size_t impl_case_sortkey_utf8(it_in_utf8 first, it_end_utf8 last, it
 {
     it_in_utf8 src = first;
     it_out_utf8 dst = result;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    type_codept special[3];
-    size_t count = 0, number = 0;
+    struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+    struct case_special_pair pair = {0, 0}; // tag_must_be_initialized
 #endif
 
     // The algorithm must be consistent with impl_utf8collate
@@ -51657,9 +52312,9 @@ uaix_static size_t impl_case_sortkey_utf8(it_in_utf8 first, it_end_utf8 last, it
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    while (src != last || count)
+    while (src != last || pair.count)
     {
-        src = iter_fold_utf8(src, last, &c, &count, &number, special);
+        src = iter_fold_utf8(src, last, &c, &pair, &buffer);
 #else
     while (src != last)
     {
@@ -51683,10 +52338,10 @@ uaix_static size_t impl_case_sortkey_utf16(it_in_utf16 first, it_end_utf16 last,
 {
     it_in_utf16 src = first;
     it_out_utf8 dst = result;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    type_codept special[3];
-    size_t count = 0, number = 0;
+    struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+    struct case_special_pair pair = {0, 0}; // tag_must_be_initialized
 #endif
 
     // The algorithm must be consistent with impl_utf8collate
@@ -51706,9 +52361,9 @@ uaix_static size_t impl_case_sortkey_utf16(it_in_utf16 first, it_end_utf16 last,
     }
 
 #ifndef UNI_ALGO_DISABLE_FULL_CASE
-    while (src != last || count)
+    while (src != last || pair.count)
     {
-        src = iter_fold_utf16(src, last, &c, &count, &number, special);
+        src = iter_fold_utf16(src, last, &c, &pair, &buffer);
 #else
     while (src != last)
     {
@@ -51853,13 +52508,13 @@ template<typename it_out_utf32>
 uaix_always_inline_tmpl
 uaix_static size_t impl_case_to_lowercase(type_codept c, it_out_utf32 dst)
 {
-    if (c == 0x0130) // Handled in place (checked in generator)
+    if (c == 0x0130) // tag_lowercase_special
     {
         *dst++ = 0x0069;
         *dst++ = 0x0307;
         return 2;
     }
-    *dst = impl_case_to_simple_lowercase(c);
+    *dst = (type_char32)impl_case_to_simple_lowercase(c);
     return 1;
 
 }
@@ -51878,7 +52533,7 @@ uaix_static size_t impl_case_to_uppercase(type_codept c, it_out_utf32 dst)
         *dst++ = stage3_special_upper[n][3];
         return stage3_special_upper[n][0];
     }
-    *dst = impl_case_to_simple_uppercase(c);
+    *dst = (type_char32)impl_case_to_simple_uppercase(c);
     return 1;
 }
 
@@ -51896,7 +52551,7 @@ uaix_static size_t impl_case_to_casefold(type_codept c, it_out_utf32 dst)
         *dst++ = stage3_special_fold[n][3];
         return stage3_special_fold[n][0];
     }
-    *dst = impl_case_to_simple_casefold(c);
+    *dst = (type_char32)impl_case_to_simple_casefold(c);
     return 1;
 }
 
@@ -51961,7 +52616,7 @@ uaix_static bool case_after_soft_dotted_utf8(it_in_utf8 first, it_in_utf8 src)
      */
 
     it_in_utf8 s = src;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (s != first)
     {
@@ -51992,7 +52647,7 @@ uaix_static bool case_more_above_utf8(it_in_utf8 src, it_end_utf8 last)
      */
 
     it_in_utf8 s = src;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (s != last)
     {
@@ -52022,7 +52677,7 @@ uaix_static bool case_before_dot_utf8(it_in_utf8 src, it_end_utf8 last)
      */
 
     it_in_utf8 s = src;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (s != last)
     {
@@ -52052,7 +52707,7 @@ uaix_static bool case_after_i_utf8(it_in_utf8 first, it_in_utf8 src)
      */
 
     it_in_utf8 s = src;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (s != first)
     {
@@ -52079,7 +52734,7 @@ template<typename it_in_utf16>
 uaix_static bool case_after_soft_dotted_utf16(it_in_utf16 first, it_in_utf16 src)
 {
     it_in_utf16 s = src;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (s != first)
     {
@@ -52102,7 +52757,7 @@ template<typename it_in_utf16, typename it_end_utf16>
 uaix_static bool case_more_above_utf16(it_in_utf16 src, it_end_utf16 last)
 {
     it_in_utf16 s = src;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (s != last)
     {
@@ -52125,7 +52780,7 @@ template<typename it_in_utf16, typename it_end_utf16>
 uaix_static bool case_before_dot_utf16(it_in_utf16 src, it_end_utf16 last)
 {
     it_in_utf16 s = src;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (s != last)
     {
@@ -52149,7 +52804,7 @@ template<typename it_in_utf16>
 uaix_static bool case_after_i_utf16(it_in_utf16 first, it_in_utf16 src)
 {
     it_in_utf16 s = src;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     while (s != first)
     {
@@ -52182,19 +52837,17 @@ uaix_static it_out_utf8 case_locale_upper_lt_utf8(type_codept c, it_out_utf8 dst
     if (c == 0x0307 && case_after_soft_dotted_utf8(first, prev))
         return dst;
 
-    // The next part is the same as in impl_utf8_casemap
+    // The next part is the same as in impl_case_map_utf8
 
     if (stages_special_upper_check(c))
     {
-        type_codept special[3];
-        size_t number = stages_special_upper(c, special);
-        if (number)
-        {
-            for (size_t i = 0; i < number; ++i)
-                dst = codepoint_to_utf8(special[i], dst);
+        struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+        size_t size = stages_special_upper(c, &buffer);
 
-            return dst;
-        }
+        for (size_t i = 0; i < size; ++i)
+            dst = codepoint_to_utf8(buffer.cps[i], dst);
+
+        return dst;
     }
 
     c = stages_upper(c);
@@ -52264,9 +52917,9 @@ uaix_static it_out_utf8 case_locale_lower_lt_utf8(type_codept c, it_out_utf8 dst
         return dst;
     }
 
-    // The next part is the same as in impl_utf8_casemap
+    // The next part is the same as in impl_case_map_utf8
 
-    if (c == 0x0130) // Handled in place (checked in generator)
+    if (c == 0x0130) // tag_lowercase_special
     {
         *dst++ = (type_char8)(type_codept)0x69;
         *dst++ = (type_char8)(type_codept)0xCC;
@@ -52275,8 +52928,8 @@ uaix_static it_out_utf8 case_locale_lower_lt_utf8(type_codept c, it_out_utf8 dst
     }
     if (c == 0x03A3) // Final_Sigma
     {
-        if (!case_final_sigma_utf8(src, last, false) &&
-            case_final_sigma_utf8(prev, first, true))
+        if (!case_final_sigma_fwd_utf8(src, last) &&
+            case_final_sigma_rev_utf8(first, prev))
         {
             *dst++ = (type_char8)(type_codept)0xCF;
             *dst++ = (type_char8)(type_codept)0x82;
@@ -52306,19 +52959,17 @@ uaix_static it_out_utf8 case_locale_upper_tr_az_utf8(type_codept c, it_out_utf8 
         return dst;
     }
 
-    // The next part is the same as in impl_utf8_casemap
+    // The next part is the same as in impl_case_map_utf8
 
     if (stages_special_upper_check(c))
     {
-        type_codept special[3];
-        size_t number = stages_special_upper(c, special);
-        if (number)
-        {
-            for (size_t i = 0; i < number; ++i)
-                dst = codepoint_to_utf8(special[i], dst);
+        struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+        size_t size = stages_special_upper(c, &buffer);
 
-            return dst;
-        }
+        for (size_t i = 0; i < size; ++i)
+            dst = codepoint_to_utf8(buffer.cps[i], dst);
+
+        return dst;
     }
 
     c = stages_upper(c);
@@ -52354,9 +53005,9 @@ uaix_static it_out_utf8 case_locale_lower_tr_az_utf8(type_codept c, it_out_utf8 
         return dst;
     }
 
-    // The next part is the same as in impl_utf8_casemap
+    // The next part is the same as in impl_case_map_utf8
 
-    if (c == 0x0130) // Handled in place (checked in generator)
+    if (c == 0x0130) // tag_lowercase_special
     {
         *dst++ = (type_char8)(type_codept)0x69;
         *dst++ = (type_char8)(type_codept)0xCC;
@@ -52365,8 +53016,8 @@ uaix_static it_out_utf8 case_locale_lower_tr_az_utf8(type_codept c, it_out_utf8 
     }
     if (c == 0x03A3) // Final_Sigma
     {
-        if (!case_final_sigma_utf8(src, last, false) &&
-            case_final_sigma_utf8(prev, first, true))
+        if (!case_final_sigma_fwd_utf8(src, last) &&
+            case_final_sigma_rev_utf8(first, prev))
         {
             *dst++ = (type_char8)(type_codept)0xCF;
             *dst++ = (type_char8)(type_codept)0x82;
@@ -52393,19 +53044,17 @@ uaix_static it_out_utf16 case_locale_upper_lt_utf16(type_codept c, it_out_utf16 
     if (c == 0x0307 && case_after_soft_dotted_utf16(first, prev))
         return dst;
 
-    // The next part is the same as in impl_utf16_casemap
+    // The next part is the same as in impl_case_map_utf16
 
     if (stages_special_upper_check(c))
     {
-        type_codept special[3];
-        size_t number = stages_special_upper(c, special);
-        if (number)
-        {
-            for (size_t i = 0; i < number; ++i)
-                dst = codepoint_to_utf16(special[i], dst);
+        struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+        size_t size = stages_special_upper(c, &buffer);
 
-            return dst;
-        }
+        for (size_t i = 0; i < size; ++i)
+            dst = codepoint_to_utf16(buffer.cps[i], dst);
+
+        return dst;
     }
 
     c = stages_upper(c);
@@ -52465,9 +53114,9 @@ uaix_static it_out_utf16 case_locale_lower_lt_utf16(type_codept c, it_out_utf16 
         return dst;
     }
 
-    // The next part is the same as in impl_utf16_casemap
+    // The next part is the same as in impl_case_map_utf16
 
-    if (c == 0x0130) // Handled in place (checked in generator)
+    if (c == 0x0130) // tag_lowercase_special
     {
         *dst++ = (type_char16)0x0069;
         *dst++ = (type_char16)0x0307;
@@ -52475,8 +53124,8 @@ uaix_static it_out_utf16 case_locale_lower_lt_utf16(type_codept c, it_out_utf16 
     }
     if (c == 0x03A3) // Final_Sigma
     {
-        if (!case_final_sigma_utf16(src, last, false) &&
-            case_final_sigma_utf16(prev, first, true))
+        if (!case_final_sigma_fwd_utf16(src, last) &&
+            case_final_sigma_rev_utf16(first, prev))
         {
             *dst++ = (type_char16)0x03C2;
             return dst;
@@ -52504,19 +53153,17 @@ uaix_static it_out_utf16 case_locale_upper_tr_az_utf16(type_codept c, it_out_utf
         return dst;
     }
 
-    // The next part is the same as in impl_utf16_casemap
+    // The next part is the same as in impl_case_map_utf16
 
     if (stages_special_upper_check(c))
     {
-        type_codept special[3];
-        size_t number = stages_special_upper(c, special);
-        if (number)
-        {
-            for (size_t i = 0; i < number; ++i)
-                dst = codepoint_to_utf16(special[i], dst);
+        struct case_special_buffer buffer = {{0}}; // tag_can_be_uninitialized
+        size_t size = stages_special_upper(c, &buffer);
 
-            return dst;
-        }
+        for (size_t i = 0; i < size; ++i)
+            dst = codepoint_to_utf16(buffer.cps[i], dst);
+
+        return dst;
     }
 
     c = stages_upper(c);
@@ -52551,9 +53198,9 @@ uaix_static it_out_utf16 case_locale_lower_tr_az_utf16(type_codept c, it_out_utf
         return dst;
     }
 
-    // The next part is the same as in impl_utf16_casemap
+    // The next part is the same as in impl_case_map_utf16
 
-    if (c == 0x0130) // Handled in place (checked in generator)
+    if (c == 0x0130) // tag_lowercase_special
     {
         *dst++ = (type_char16)0x0069;
         *dst++ = (type_char16)0x0307;
@@ -52561,8 +53208,8 @@ uaix_static it_out_utf16 case_locale_lower_tr_az_utf16(type_codept c, it_out_utf
     }
     if (c == 0x03A3) // Final_Sigma
     {
-        if (!case_final_sigma_utf16(src, last, false) &&
-            case_final_sigma_utf16(prev, first, true))
+        if (!case_final_sigma_fwd_utf16(src, last) &&
+            case_final_sigma_rev_utf16(first, prev))
         {
             *dst++ = (type_char16)0x03C2;
             return dst;
@@ -52576,9 +53223,419 @@ uaix_static it_out_utf16 case_locale_lower_tr_az_utf16(type_codept c, it_out_utf
     return dst;
 }
 
+uaix_const uaix_array(type_codept, case_locale_el_map_0370_03FF, 144) =
+{
+    // U+0370..03FF
+    0x0370,
+    0x0370,
+    0x0372,
+    0x0372,
+    0,
+    0,
+    0x0376,
+    0x0376,
+    0,
+    0,
+    0x037A,
+    0x03FD,
+    0x03FE,
+    0x03FF,
+    0,
+    0x037F,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0x0391 | 0x1000 | 0x4000,
+    0,
+    0x0395 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0,
+    0x039F | 0x1000 | 0x4000,
+    0,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000 | 0x8000,
+    0x0391 | 0x1000,
+    0x0392,
+    0x0393,
+    0x0394,
+    0x0395 | 0x1000,
+    0x0396,
+    0x0397 | 0x1000,
+    0x0398,
+    0x0399 | 0x1000,
+    0x039A,
+    0x039B,
+    0x039C,
+    0x039D,
+    0x039E,
+    0x039F | 0x1000,
+    0x03A0,
+    0x03A1,
+    0,
+    0x03A3,
+    0x03A4,
+    0x03A5 | 0x1000,
+    0x03A6,
+    0x03A7,
+    0x03A8,
+    0x03A9 | 0x1000,
+    0x0399 | 0x1000 | 0x8000,
+    0x03A5 | 0x1000 | 0x8000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000 | 0x8000,
+    0x0391 | 0x1000,
+    0x0392,
+    0x0393,
+    0x0394,
+    0x0395 | 0x1000,
+    0x0396,
+    0x0397 | 0x1000,
+    0x0398,
+    0x0399 | 0x1000,
+    0x039A,
+    0x039B,
+    0x039C,
+    0x039D,
+    0x039E,
+    0x039F | 0x1000,
+    0x03A0,
+    0x03A1,
+    0x03A3,
+    0x03A3,
+    0x03A4,
+    0x03A5 | 0x1000,
+    0x03A6,
+    0x03A7,
+    0x03A8,
+    0x03A9 | 0x1000,
+    0x0399 | 0x1000 | 0x8000,
+    0x03A5 | 0x1000 | 0x8000,
+    0x039F | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03CF,
+    0x0392,
+    0x0398,
+    0x03D2,
+    0x03D2 | 0x4000,
+    0x03D2 | 0x8000,
+    0x03A6,
+    0x03A0,
+    0x03CF,
+    0x03D8,
+    0x03D8,
+    0x03DA,
+    0x03DA,
+    0x03DC,
+    0x03DC,
+    0x03DE,
+    0x03DE,
+    0x03E0,
+    0x03E0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0x039A,
+    0x03A1,
+    0x03F9,
+    0x037F,
+    0x03F4,
+    0x0395 | 0x1000,
+    0,
+    0x03F7,
+    0x03F7,
+    0x03F9,
+    0x03FA,
+    0x03FA,
+    0x03FC,
+    0x03FD,
+    0x03FE,
+    0x03FF,
+};
+
+uaix_const uaix_array(type_codept, case_locale_el_map_1F00_1FFF, 256) =
+{
+    // U+1F00..1FFF
+    0x0391 | 0x1000,
+    0x0391 | 0x1000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000,
+    0x0391 | 0x1000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0395 | 0x1000,
+    0x0395 | 0x1000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0,
+    0,
+    0x0395 | 0x1000,
+    0x0395 | 0x1000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0,
+    0,
+    0x0397 | 0x1000,
+    0x0397 | 0x1000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000,
+    0x0397 | 0x1000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0399 | 0x1000,
+    0x0399 | 0x1000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000,
+    0x0399 | 0x1000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x039F | 0x1000,
+    0x039F | 0x1000,
+    0x039F | 0x1000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0,
+    0,
+    0x039F | 0x1000,
+    0x039F | 0x1000,
+    0x039F | 0x1000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0,
+    0,
+    0x03A5 | 0x1000,
+    0x03A5 | 0x1000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000,
+    0,
+    0x03A5 | 0x1000,
+    0,
+    0x03A5 | 0x1000 | 0x4000,
+    0,
+    0x03A5 | 0x1000 | 0x4000,
+    0,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000,
+    0x03A9 | 0x1000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000,
+    0x03A9 | 0x1000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0,
+    0,
+    0x0391 | 0x1000 | 0x2000,
+    0x0391 | 0x1000 | 0x2000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000,
+    0x0391 | 0x1000 | 0x2000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000,
+    0x0397 | 0x1000 | 0x2000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000,
+    0x0397 | 0x1000 | 0x2000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000,
+    0x03A9 | 0x1000 | 0x2000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000,
+    0x03A9 | 0x1000 | 0x2000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000,
+    0x0391 | 0x1000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000 | 0x4000,
+    0x0391 | 0x1000,
+    0x0391 | 0x1000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x4000,
+    0x0391 | 0x1000 | 0x2000,
+    0,
+    0x0399 | 0x1000,
+    0,
+    0,
+    0,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0395 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x4000,
+    0x0397 | 0x1000 | 0x2000,
+    0,
+    0,
+    0,
+    0x0399 | 0x1000,
+    0x0399 | 0x1000,
+    0x0399 | 0x1000 | 0x4000 | 0x8000,
+    0x0399 | 0x1000 | 0x4000 | 0x8000,
+    0,
+    0,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000 | 0x8000,
+    0x0399 | 0x1000,
+    0x0399 | 0x1000,
+    0x0399 | 0x1000 | 0x4000,
+    0x0399 | 0x1000 | 0x4000,
+    0,
+    0,
+    0,
+    0,
+    0x03A5 | 0x1000,
+    0x03A5 | 0x1000,
+    0x03A5 | 0x1000 | 0x4000 | 0x8000,
+    0x03A5 | 0x1000 | 0x4000 | 0x8000,
+    0x03A1,
+    0x03A1,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000 | 0x8000,
+    0x03A5 | 0x1000,
+    0x03A5 | 0x1000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A5 | 0x1000 | 0x4000,
+    0x03A1,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0x039F | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x4000,
+    0x03A9 | 0x1000 | 0x2000,
+    0,
+    0,
+    0,
+};
+
 uaix_always_inline
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
-type_codept case_greek_upper(type_codept c, bool* prev_vowel_with_accent, bool* maybe_eta_with_tonos)
+uaix_static type_codept case_greek_upper(type_codept c, bool* const prev_vowel_with_accent, bool* const maybe_eta_with_tonos)
 {
     // The data and the algorithm is based on: http://site.icu-project.org/design/case/greek-upper
 
@@ -52587,426 +53644,16 @@ type_codept case_greek_upper(type_codept c, bool* prev_vowel_with_accent, bool* 
     const type_codept has_accent = 0x4000;
     const type_codept has_dialytika = 0x8000;
 
-    static const type_codept map_0370_03FF[144] =
-    {
-        // U+0370..03FF
-        0x0370,
-        0x0370,
-        0x0372,
-        0x0372,
-        0,
-        0,
-        0x0376,
-        0x0376,
-        0,
-        0,
-        0x037A,
-        0x03FD,
-        0x03FE,
-        0x03FF,
-        0,
-        0x037F,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0x0391 | 0x1000 | 0x4000,
-        0,
-        0x0395 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0,
-        0x039F | 0x1000 | 0x4000,
-        0,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000 | 0x8000,
-        0x0391 | 0x1000,
-        0x0392,
-        0x0393,
-        0x0394,
-        0x0395 | 0x1000,
-        0x0396,
-        0x0397 | 0x1000,
-        0x0398,
-        0x0399 | 0x1000,
-        0x039A,
-        0x039B,
-        0x039C,
-        0x039D,
-        0x039E,
-        0x039F | 0x1000,
-        0x03A0,
-        0x03A1,
-        0,
-        0x03A3,
-        0x03A4,
-        0x03A5 | 0x1000,
-        0x03A6,
-        0x03A7,
-        0x03A8,
-        0x03A9 | 0x1000,
-        0x0399 | 0x1000 | 0x8000,
-        0x03A5 | 0x1000 | 0x8000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000 | 0x8000,
-        0x0391 | 0x1000,
-        0x0392,
-        0x0393,
-        0x0394,
-        0x0395 | 0x1000,
-        0x0396,
-        0x0397 | 0x1000,
-        0x0398,
-        0x0399 | 0x1000,
-        0x039A,
-        0x039B,
-        0x039C,
-        0x039D,
-        0x039E,
-        0x039F | 0x1000,
-        0x03A0,
-        0x03A1,
-        0x03A3,
-        0x03A3,
-        0x03A4,
-        0x03A5 | 0x1000,
-        0x03A6,
-        0x03A7,
-        0x03A8,
-        0x03A9 | 0x1000,
-        0x0399 | 0x1000 | 0x8000,
-        0x03A5 | 0x1000 | 0x8000,
-        0x039F | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03CF,
-        0x0392,
-        0x0398,
-        0x03D2,
-        0x03D2 | 0x4000,
-        0x03D2 | 0x8000,
-        0x03A6,
-        0x03A0,
-        0x03CF,
-        0x03D8,
-        0x03D8,
-        0x03DA,
-        0x03DA,
-        0x03DC,
-        0x03DC,
-        0x03DE,
-        0x03DE,
-        0x03E0,
-        0x03E0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0x039A,
-        0x03A1,
-        0x03F9,
-        0x037F,
-        0x03F4,
-        0x0395 | 0x1000,
-        0,
-        0x03F7,
-        0x03F7,
-        0x03F9,
-        0x03FA,
-        0x03FA,
-        0x03FC,
-        0x03FD,
-        0x03FE,
-        0x03FF,
-    };
-
-    static const type_codept map_1F00_1FFF[256] =
-    {
-        // U+1F00..1FFF
-        0x0391 | 0x1000,
-        0x0391 | 0x1000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000,
-        0x0391 | 0x1000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0395 | 0x1000,
-        0x0395 | 0x1000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0,
-        0,
-        0x0395 | 0x1000,
-        0x0395 | 0x1000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0,
-        0,
-        0x0397 | 0x1000,
-        0x0397 | 0x1000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000,
-        0x0397 | 0x1000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0399 | 0x1000,
-        0x0399 | 0x1000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000,
-        0x0399 | 0x1000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x039F | 0x1000,
-        0x039F | 0x1000,
-        0x039F | 0x1000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0,
-        0,
-        0x039F | 0x1000,
-        0x039F | 0x1000,
-        0x039F | 0x1000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0,
-        0,
-        0x03A5 | 0x1000,
-        0x03A5 | 0x1000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000,
-        0,
-        0x03A5 | 0x1000,
-        0,
-        0x03A5 | 0x1000 | 0x4000,
-        0,
-        0x03A5 | 0x1000 | 0x4000,
-        0,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000,
-        0x03A9 | 0x1000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000,
-        0x03A9 | 0x1000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0,
-        0,
-        0x0391 | 0x1000 | 0x2000,
-        0x0391 | 0x1000 | 0x2000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000,
-        0x0391 | 0x1000 | 0x2000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000,
-        0x0397 | 0x1000 | 0x2000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000,
-        0x0397 | 0x1000 | 0x2000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000,
-        0x03A9 | 0x1000 | 0x2000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000,
-        0x03A9 | 0x1000 | 0x2000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000,
-        0x0391 | 0x1000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000 | 0x4000,
-        0x0391 | 0x1000,
-        0x0391 | 0x1000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x4000,
-        0x0391 | 0x1000 | 0x2000,
-        0,
-        0x0399 | 0x1000,
-        0,
-        0,
-        0,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0395 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x4000,
-        0x0397 | 0x1000 | 0x2000,
-        0,
-        0,
-        0,
-        0x0399 | 0x1000,
-        0x0399 | 0x1000,
-        0x0399 | 0x1000 | 0x4000 | 0x8000,
-        0x0399 | 0x1000 | 0x4000 | 0x8000,
-        0,
-        0,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000 | 0x8000,
-        0x0399 | 0x1000,
-        0x0399 | 0x1000,
-        0x0399 | 0x1000 | 0x4000,
-        0x0399 | 0x1000 | 0x4000,
-        0,
-        0,
-        0,
-        0,
-        0x03A5 | 0x1000,
-        0x03A5 | 0x1000,
-        0x03A5 | 0x1000 | 0x4000 | 0x8000,
-        0x03A5 | 0x1000 | 0x4000 | 0x8000,
-        0x03A1,
-        0x03A1,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000 | 0x8000,
-        0x03A5 | 0x1000,
-        0x03A5 | 0x1000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A5 | 0x1000 | 0x4000,
-        0x03A1,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0x039F | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x4000,
-        0x03A9 | 0x1000 | 0x2000,
-        0,
-        0,
-        0,
-    };
-
-    type_codept data = 0;
+    type_codept data = 0; // tag_can_be_uninitialized
 
     // Unicode ranges for Greek are U+0370..03FF and U+1F00..1FFF and one U+2126
     // Ignore other code points
     if (c < 0x0370 || c > 0x2126 || (c > 0x03FF && c < 0x1F00))
         data = 0; // NOLINT(bugprone-branch-clone)
     else if (c <= 0x03FF)
-        data = map_0370_03FF[c - 0x0370];
+        data = case_locale_el_map_0370_03FF[c - 0x0370];
     else if (c <= 0x1FFF)
-        data = map_1F00_1FFF[c - 0x1F00];
+        data = case_locale_el_map_1F00_1FFF[c - 0x1F00];
     else if (c == 0x2126)
         data = 0x03A9 | has_vowel;
     else
@@ -53056,9 +53703,9 @@ uaix_static size_t case_upper_el_utf8(it_in_utf8 first, it_end_utf8 last, it_out
 {
     it_in_utf8 src = first;
     it_out_utf8 dst = result;
-    type_codept c = 0;
-    bool prev_vowel_with_accent = false;
-    bool maybe_eta_with_tonos = false;
+    type_codept c = 0; // tag_can_be_uninitialized
+    bool prev_vowel_with_accent = false; // tag_must_be_initialized
+    bool maybe_eta_with_tonos = false; // tag_must_be_initialized
 
     while (src != last)
     {
@@ -53071,8 +53718,8 @@ uaix_static size_t case_upper_el_utf8(it_in_utf8 first, it_end_utf8 last, it_out
         {
             // Use Final_Sigma function here because Eta follows the same "word boundary" rules
             if (maybe_eta_with_tonos &&
-                !case_final_sigma_utf8(src, last, false) &&
-                !case_final_sigma_utf8(prev, first, true))
+                !case_final_sigma_fwd_utf8(src, last) &&
+                !case_final_sigma_rev_utf8(first, prev))
             {
                 *dst++ = (type_char8)(type_codept)0xCE;
                 *dst++ = (type_char8)(type_codept)0x89;
@@ -53085,15 +53732,13 @@ uaix_static size_t case_upper_el_utf8(it_in_utf8 first, it_end_utf8 last, it_out
         {
             if (stages_special_upper_check(c))
             {
-                type_codept special[3];
-                size_t number = stages_special_upper(c, special);
-                if (number)
-                {
-                    for (size_t i = 0; i < number; ++i)
-                        dst = codepoint_to_utf8(special[i], dst);
+                struct case_special_buffer buffer = {{0}};
+                size_t size = stages_special_upper(c, &buffer);
 
-                    continue;
-                }
+                for (size_t i = 0; i < size; ++i)
+                    dst = codepoint_to_utf8(buffer.cps[i], dst);
+
+                continue;
             }
 
             c = stages_upper(c);
@@ -53112,9 +53757,9 @@ uaix_static size_t case_upper_el_utf16(it_in_utf16 first, it_end_utf16 last, it_
 {
     it_in_utf16 src = first;
     it_out_utf16 dst = result;
-    type_codept c = 0;
-    bool after_vowel_with_accent = false;
-    bool maybe_eta_with_tonos = false;
+    type_codept c = 0; // tag_can_be_uninitialized
+    bool after_vowel_with_accent = false; // tag_must_be_initialized
+    bool maybe_eta_with_tonos = false; // tag_must_be_initialized
 
     while (src != last)
     {
@@ -53127,8 +53772,8 @@ uaix_static size_t case_upper_el_utf16(it_in_utf16 first, it_end_utf16 last, it_
         {
             // Use Final_Sigma function here because Eta follows the same "word boundary" rules
             if (maybe_eta_with_tonos &&
-                !case_final_sigma_utf16(src, last, false) &&
-                !case_final_sigma_utf16(prev, first, true))
+                !case_final_sigma_fwd_utf16(src, last) &&
+                !case_final_sigma_rev_utf16(first, prev))
             {
                 *dst++ = (type_char16)0x0389;
                 continue;
@@ -53140,15 +53785,13 @@ uaix_static size_t case_upper_el_utf16(it_in_utf16 first, it_end_utf16 last, it_
         {
             if (stages_special_upper_check(c))
             {
-                type_codept special[3];
-                size_t number = stages_special_upper(c, special);
-                if (number)
-                {
-                    for (size_t i = 0; i < number; ++i)
-                        dst = codepoint_to_utf16(special[i], dst);
+                struct case_special_buffer buffer = {{0}};
+                size_t size = stages_special_upper(c, &buffer);
 
-                    continue;
-                }
+                for (size_t i = 0; i < size; ++i)
+                    dst = codepoint_to_utf16(buffer.cps[i], dst);
+
+                continue;
             }
 
             c = stages_upper(c);
@@ -53167,18 +53810,18 @@ template<typename it_in_utf8, typename it_end_utf8, typename it_out_utf8>
 #endif
 uaix_static size_t case_title_locale_utf8(it_in_utf8 first, it_end_utf8 last, it_out_utf8 result, type_codept language)
 {
-    // The function is the same as utf8_title except LOCALE BEGIN - LOCALE END parts
+    // The function is the same as case_title_utf8 except LOCALE BEGIN - LOCALE END parts
 
     it_in_utf8 src = first;
     it_in_utf8 brk = first;
     it_in_utf8 prev_brk = first;
     it_out_utf8 dst = result;
-    type_codept c = 0;
-    bool found_break = false;
-    bool make_lower = false;
+    type_codept c = 0; // tag_can_be_uninitialized
+    bool found_break = false; // tag_must_be_initialized
+    bool make_lower = false; // tag_must_be_initialized
 
     type_codept word_prop = 0; // Not used here
-    struct impl_break_word_state state = {0,0,0,0,0,0,0};
+    struct impl_break_word_state state = {0,0,0,0,0,0,0}; // tag_can_be_uninitialized
     impl_break_word_state_reset(&state);
 
     while (src != last)
@@ -53249,15 +53892,13 @@ uaix_static size_t case_title_locale_utf8(it_in_utf8 first, it_end_utf8 last, it
 
                 if (stages_special_title_check(c))
                 {
-                    type_codept special[3];
-                    size_t number = stages_special_title(c, special);
-                    if (number)
-                    {
-                        for (size_t i = 0; i < number; ++i)
-                            dst = codepoint_to_utf8(special[i], dst);
+                    struct case_special_buffer buffer = {{0}};
+                    size_t size = stages_special_title(c, &buffer);
 
-                        continue;
-                    }
+                    for (size_t i = 0; i < size; ++i)
+                        dst = codepoint_to_utf8(buffer.cps[i], dst);
+
+                    continue;
                 }
 
                 c = stages_title(c);
@@ -53280,7 +53921,7 @@ uaix_static size_t case_title_locale_utf8(it_in_utf8 first, it_end_utf8 last, it
 
             // LOCALE END
 
-            if (c == 0x0130) // Handled in place (checked in generator)
+            if (c == 0x0130) // tag_lowercase_special
             {
                 *dst++ = (type_char8)(type_codept)0x69;
                 *dst++ = (type_char8)(type_codept)0xCC;
@@ -53289,8 +53930,8 @@ uaix_static size_t case_title_locale_utf8(it_in_utf8 first, it_end_utf8 last, it
             }
             if (c == 0x03A3) // Final_Sigma
             {
-                if (!case_final_sigma_utf8(src, last, false) &&
-                    case_final_sigma_utf8(prev, first, true))
+                if (!case_final_sigma_fwd_utf8(src, last) &&
+                    case_final_sigma_rev_utf8(first, prev))
                 {
                     *dst++ = (type_char8)(type_codept)0xCF;
                     *dst++ = (type_char8)(type_codept)0x82;
@@ -53312,18 +53953,18 @@ template<typename it_in_utf16, typename it_end_utf16, typename it_out_utf16>
 #endif
 uaix_static size_t case_title_locale_utf16(it_in_utf16 first, it_end_utf16 last, it_out_utf16 result, type_codept language)
 {
-    // The function is the same as utf16_title except LOCALE BEGIN - LOCALE END parts
+    // The function is the same as case_title_utf16 except LOCALE BEGIN - LOCALE END parts
 
     it_in_utf16 src = first;
     it_in_utf16 brk = first;
     it_in_utf16 prev_brk = first;
     it_out_utf16 dst = result;
-    type_codept c = 0;
-    bool found_break = false;
-    bool make_lower = false;
+    type_codept c = 0; // tag_can_be_uninitialized
+    bool found_break = false; // tag_must_be_initialized
+    bool make_lower = false; // tag_must_be_initialized
 
     type_codept word_prop = 0; // Not used here
-    struct impl_break_word_state state = {0,0,0,0,0,0,0};
+    struct impl_break_word_state state = {0,0,0,0,0,0,0}; // tag_can_be_uninitialized
     impl_break_word_state_reset(&state);
 
     while (src != last)
@@ -53393,15 +54034,13 @@ uaix_static size_t case_title_locale_utf16(it_in_utf16 first, it_end_utf16 last,
 
                 if (stages_special_title_check(c))
                 {
-                    type_codept special[3];
-                    size_t number = stages_special_title(c, special);
-                    if (number)
-                    {
-                        for (size_t i = 0; i < number; ++i)
-                            dst = codepoint_to_utf16(special[i], dst);
+                    struct case_special_buffer buffer = {{0}};
+                    size_t size = stages_special_title(c, &buffer);
 
-                        continue;
-                    }
+                    for (size_t i = 0; i < size; ++i)
+                        dst = codepoint_to_utf16(buffer.cps[i], dst);
+
+                    continue;
                 }
 
                 c = stages_title(c);
@@ -53424,7 +54063,7 @@ uaix_static size_t case_title_locale_utf16(it_in_utf16 first, it_end_utf16 last,
 
             // LOCALE END
 
-            if (c == 0x0130) // Handled in place (checked in generator)
+            if (c == 0x0130) // tag_lowercase_special
             {
                 *dst++ = (type_char16)0x0069;
                 *dst++ = (type_char16)0x0307;
@@ -53432,8 +54071,8 @@ uaix_static size_t case_title_locale_utf16(it_in_utf16 first, it_end_utf16 last,
             }
             if (c == 0x03A3) // Final_Sigma
             {
-                if (!case_final_sigma_utf16(src, last, false) &&
-                    case_final_sigma_utf16(prev, first, true))
+                if (!case_final_sigma_fwd_utf16(src, last) &&
+                    case_final_sigma_rev_utf16(first, prev))
                 {
                     *dst++ = (type_char16)0x03C2;
                     continue;
@@ -53458,7 +54097,7 @@ uaix_static size_t impl_case_map_locale_utf8(it_in_utf8 first, it_end_utf8 last,
 {
     it_in_utf8 src = first;
     it_out_utf8 dst = result;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     if (language == case_map_language_lt)
     {
@@ -53547,7 +54186,7 @@ uaix_static size_t impl_case_map_locale_utf16(it_in_utf16 first, it_end_utf16 la
 {
     it_in_utf16 src = first;
     it_out_utf16 dst = result;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
 
     if (language == case_map_language_lt)
     {
@@ -53969,39 +54608,65 @@ UNI_ALGO_IMPL_NAMESPACE_BEGIN
 // 18 is max decomposition (we use the end of the buffer to store the next decomposed code point)
 // Use 70 just because it means we need 70*4+70=260 bytes on stack for any normalization
 #ifdef __cplusplus
-uaix_const size_t norm_buffer_size = 70;
-#else
+uaix_const size_t norm_buffer_size = 70; // tag_unicode_unstable_value
+#else // tag_synchronize
 #define norm_buffer_size 70
 #endif
-uaix_const size_t norm_buffer_max_non_starters = 30; // This is in The Unicode Standard and must never be changed
-uaix_const size_t norm_max_decomposition = 18; // Checked in generator
 
-uaix_const int impl_norm_is_yes = 0;
-uaix_const int impl_norm_is_ill_formed = 8;
-//uaix_const int impl_norm_is_not_stream_safe = 16; // Reserved
-//uaix_const int impl_norm_is_no = 1; // Reserved
-//uaix_const int impl_norm_is_maybe = 2; // Reserved
-uaix_const int norm_is_no_or_maybe = 3; // Can be changed in the future. Must never be used in a wrapper.
+uaix_const size_t impl_max_norm_non_starters    = 30; // tag_unicode_stable_value
+// Quote "...sequences of non-starters longer than 30 characters in length..." from:
+// https://unicode.org/reports/tr15/#Stream_Safe_Text_Format
+
+uaix_const size_t impl_max_norm_decomp_canon    = 4;  // tag_unicode_unstable_value
+uaix_const size_t impl_max_norm_decomp_compat   = 18; // tag_unicode_unstable_value
+// Quote "A canonical mapping ... pair of characters, but is never longer than two characters"
+// and quote "Compatibility mappings are guaranteed to be no longer than 18 characters" from:
+// https://www.unicode.org/reports/tr44/#Character_Decomposition_Mappings
+// but these values are for full decomposition so they are unstable
+// because in theory they may change in Unicode but it is very unlikely.
 
 // http://www.unicode.org/faq/normalization.html#12
 // The length of a destination (result) string must be premultiplied with one of these
 // Example: destination_length = source_length * impl_x_function_name
-uaix_const size_t impl_x_norm_to_nfc_utf8 = 3;
-uaix_const size_t impl_x_norm_to_nfd_utf8 = 3;
+uaix_const size_t impl_x_norm_to_nfc_utf8       = 3;  // tag_unicode_stable_value
+uaix_const size_t impl_x_norm_to_nfd_utf8       = 3;  // tag_unicode_unstable_value
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-uaix_const size_t impl_x_norm_to_nfkc_utf8 = 11;
-uaix_const size_t impl_x_norm_to_nfkd_utf8 = 11;
+uaix_const size_t impl_x_norm_to_nfkc_utf8      = 11; // tag_unicode_unstable_value
+uaix_const size_t impl_x_norm_to_nfkd_utf8      = 11; // tag_unicode_unstable_value
 #endif
-uaix_const size_t impl_x_norm_to_nfc_utf16 = 3;
-uaix_const size_t impl_x_norm_to_nfd_utf16 = 4;
+uaix_const size_t impl_x_norm_to_nfc_utf16      = 3;  // tag_unicode_stable_value
+uaix_const size_t impl_x_norm_to_nfd_utf16      = 4;  // tag_unicode_unstable_value
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-uaix_const size_t impl_x_norm_to_nfkc_utf16 = 18;
-uaix_const size_t impl_x_norm_to_nfkd_utf16 = 18;
+uaix_const size_t impl_x_norm_to_nfkc_utf16     = 18; // tag_unicode_unstable_value
+uaix_const size_t impl_x_norm_to_nfkd_utf16     = 18; // tag_unicode_unstable_value
 #endif
 #ifndef UNI_ALGO_DISABLE_PROP
-uaix_const size_t impl_x_norm_to_unaccent_utf8 = 3;
-uaix_const size_t impl_x_norm_to_unaccent_utf16 = 3;
+uaix_const size_t impl_x_norm_to_unaccent_utf8  = 3;  // tag_unicode_stable_value
+uaix_const size_t impl_x_norm_to_unaccent_utf16 = 3;  // tag_unicode_stable_value
 #endif
+// Only Decomposition_Mapping of NFC is Unicode stable value for strings.
+// https://www.unicode.org/policies/stability_policy.html#Property_Value
+
+// Return values for normalization detection functions
+uaix_const int impl_norm_is_yes                 = 0;
+uaix_const int impl_norm_is_ill_formed          = 8;
+//uaix_const int impl_norm_is_not_stream_safe   = 16; // Reserved
+//uaix_const int impl_norm_is_no                = 1;  // Reserved
+//uaix_const int impl_norm_is_maybe             = 2;  // Reserved
+uaix_const int norm_is_no_or_maybe              = 3;  // Can be changed in the future. Must never be used in a wrapper.
+
+struct norm_buffer
+{
+    uaix_array(type_codept, cps, norm_buffer_size);
+    uaix_array(unsigned char, ccc, norm_buffer_size);
+};
+
+struct norm_multi
+{
+    size_t size;
+    size_t last_qc;
+    size_t count_ns;
+};
 
 /* TODO: from yesterdays me to tomorrows me.
  * Refactoring merge:
@@ -54138,14 +54803,14 @@ uaix_static bool stages_qc_yes_is_impl(type_codept ccc_qc, type_codept bit)
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_ns_impl(type_codept ccc_qc, size_t* count_ns)
+uaix_static bool stages_qc_yes_ns_impl(type_codept ccc_qc, size_t* const count_ns)
 {
     // https://unicode.org/reports/tr15/#Stream_Safe_Text_Format
 
     if (ccc_qc >> 14) // Initial non-starters in NFKD
     {
         *count_ns += ccc_qc >> 14;
-        if (*count_ns > norm_buffer_max_non_starters)
+        if (*count_ns > impl_max_norm_non_starters)
             return true;
     }
     else
@@ -54156,7 +54821,7 @@ uaix_static bool stages_qc_yes_ns_impl(type_codept ccc_qc, size_t* count_ns)
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_ns_nfc(type_codept c, size_t* count_ns)
+uaix_static bool stages_qc_yes_ns_nfc(type_codept c, size_t* const count_ns)
 {
     /* Note that we always use NFKD lower bound in these
      * functions because we need to count initial/trailing
@@ -54182,7 +54847,7 @@ uaix_static bool stages_qc_yes_ns_nfc(type_codept c, size_t* count_ns)
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_ns_nfd(type_codept c, size_t* count_ns)
+uaix_static bool stages_qc_yes_ns_nfd(type_codept c, size_t* const count_ns)
 {
     if (c >= 0x00A0) // NFKD lower bound
     {
@@ -54198,7 +54863,7 @@ uaix_static bool stages_qc_yes_ns_nfd(type_codept c, size_t* count_ns)
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_ns_nfkc(type_codept c, size_t* count_ns)
+uaix_static bool stages_qc_yes_ns_nfkc(type_codept c, size_t* const count_ns)
 {
     if (c >= 0x00A0) // NFKD lower bound
     {
@@ -54212,7 +54877,7 @@ uaix_static bool stages_qc_yes_ns_nfkc(type_codept c, size_t* count_ns)
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_ns_nfkd(type_codept c, size_t* count_ns)
+uaix_static bool stages_qc_yes_ns_nfkd(type_codept c, size_t* const count_ns)
 {
     if (c >= 0x00A0) // NFKD lower bound
     {
@@ -54260,7 +54925,7 @@ uaix_static bool stages_qc_yes_nfkd(type_codept c)
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_is_ccc_impl(type_codept ccc_qc, unsigned char* last_ccc)
+uaix_static bool stages_qc_yes_is_ccc_impl(type_codept ccc_qc, unsigned char* const last_ccc)
 {
     // https://unicode.org/reports/tr15/#Detecting_Normalization_Forms
     // Note: "if (Character.isSupplementaryCodePoint(ch)) ++i;"
@@ -54278,7 +54943,7 @@ uaix_static bool stages_qc_yes_is_ccc_impl(type_codept ccc_qc, unsigned char* la
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_is_nfc(type_codept c, unsigned char* last_ccc)
+uaix_static bool stages_qc_yes_is_nfc(type_codept c, unsigned char* const last_ccc)
 {
     if (c >= 0x0300) // NFC lower bound
     {
@@ -54292,7 +54957,7 @@ uaix_static bool stages_qc_yes_is_nfc(type_codept c, unsigned char* last_ccc)
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_is_nfd(type_codept c, unsigned char* last_ccc)
+uaix_static bool stages_qc_yes_is_nfd(type_codept c, unsigned char* const last_ccc)
 {
     if (c >= 0x00C0) // NFD lower bound
     {
@@ -54308,7 +54973,7 @@ uaix_static bool stages_qc_yes_is_nfd(type_codept c, unsigned char* last_ccc)
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_is_nfkc(type_codept c, unsigned char* last_ccc)
+uaix_static bool stages_qc_yes_is_nfkc(type_codept c, unsigned char* const last_ccc)
 {
     if (c >= 0x00A0) // NFKC lower bound
     {
@@ -54322,7 +54987,7 @@ uaix_static bool stages_qc_yes_is_nfkc(type_codept c, unsigned char* last_ccc)
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_is_nfkd(type_codept c, unsigned char* last_ccc)
+uaix_static bool stages_qc_yes_is_nfkd(type_codept c, unsigned char* const last_ccc)
 {
     if (c >= 0x00A0) // NFKD lower bound
     {
@@ -54338,7 +55003,7 @@ uaix_static bool stages_qc_yes_is_nfkd(type_codept c, unsigned char* last_ccc)
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 uaix_always_inline
-uaix_static void norm_order(type_codept buffer[], unsigned char buffer_ccc[], size_t size)
+uaix_static void norm_order(struct norm_buffer* const buffer, size_t size)
 {
     if (size > 0)
     {
@@ -54346,27 +55011,27 @@ uaix_static void norm_order(type_codept buffer[], unsigned char buffer_ccc[], si
 
         while (last > 0)
         {
-            size_t curr = 0;
-            size_t curr_ccc = 0;
-            size_t new_last = 0;
+            size_t curr = 0; // tag_must_be_initialized
+            size_t curr_ccc = 0; // tag_must_be_initialized
+            size_t new_last = 0; // tag_must_be_initialized
 
             for (; curr < last; ++curr, ++curr_ccc)
             {
                 size_t next = curr + 1;
                 size_t next_ccc = curr_ccc + 1;
 
-                if (buffer_ccc[next_ccc] > 0 && buffer_ccc[next_ccc] < buffer_ccc[curr_ccc])
+                if (buffer->ccc[next_ccc] > 0 && buffer->ccc[next_ccc] < buffer->ccc[curr_ccc])
                 {
                     // Swap
 
-                    type_codept   temp     = buffer[curr];
-                    unsigned char temp_ccc = buffer_ccc[curr_ccc];
+                    type_codept   temp     = buffer->cps[curr];
+                    unsigned char temp_ccc = buffer->ccc[curr_ccc];
 
-                    buffer[curr] = buffer[next];
-                    buffer[next] = temp;
+                    buffer->cps[curr] = buffer->cps[next];
+                    buffer->cps[next] = temp;
 
-                    buffer_ccc[curr_ccc] = buffer_ccc[next_ccc];
-                    buffer_ccc[next_ccc] = temp_ccc;
+                    buffer->ccc[curr_ccc] = buffer->ccc[next_ccc];
+                    buffer->ccc[next_ccc] = temp_ccc;
 
                     new_last = curr;
                 }
@@ -54377,7 +55042,7 @@ uaix_static void norm_order(type_codept buffer[], unsigned char buffer_ccc[], si
 }
 
 uaix_always_inline
-uaix_static size_t norm_decomp_hangul(type_codept c, size_t i, type_codept buffer[], unsigned char buffer_ccc[])
+uaix_static size_t norm_decomp_hangul(type_codept c, size_t i, struct norm_buffer* const buffer)
 {
     const type_codept SBase = 0xAC00;
     const type_codept LBase = 0x1100;
@@ -54394,16 +55059,16 @@ uaix_static size_t norm_decomp_hangul(type_codept c, size_t i, type_codept buffe
         type_codept VPart = VBase + (SIndex % NCount) / TCount;
         type_codept TPart = TBase + SIndex % TCount;
 
-        buffer[i] = LPart;
-        buffer_ccc[i] = 0;
+        buffer->cps[i] = LPart;
+        buffer->ccc[i] = 0;
 
-        buffer[i + 1] = VPart;
-        buffer_ccc[i + 1] = 0;
+        buffer->cps[i + 1] = VPart;
+        buffer->ccc[i + 1] = 0;
 
         if (TPart != TBase)
         {
-            buffer[i + 2] = TPart;
-            buffer_ccc[i + 2] = 0;
+            buffer->cps[i + 2] = TPart;
+            buffer->ccc[i + 2] = 0;
 
             return 3;
         }
@@ -54415,7 +55080,7 @@ uaix_static size_t norm_decomp_hangul(type_codept c, size_t i, type_codept buffe
 }
 
 uaix_always_inline
-uaix_static size_t norm_comp_hangul(size_t i, type_codept buffer[], unsigned char buffer_ccc[], size_t size)
+uaix_static size_t norm_comp_hangul(size_t i, struct norm_buffer* const buffer, size_t size)
 {
     // Note: CCC=255 is used to mark composed code points
 
@@ -54428,30 +55093,30 @@ uaix_static size_t norm_comp_hangul(size_t i, type_codept buffer[], unsigned cha
     const type_codept TCount = 28;
     const type_codept SCount = 11172;
 
-    type_codept c1 = buffer[i];
+    type_codept c1 = buffer->cps[i];
 
     if (c1 >= LBase && c1 < LBase + LCount) // L+V+T
     {
         if (i + 1 < size)
         {
-            type_codept c2 = buffer[i + 1];
+            type_codept c2 = buffer->cps[i + 1];
 
             if (c2 >= VBase && c2 < VBase + VCount)
             {
                 type_codept LIndex = c1 - LBase;
                 type_codept VIndex = c2 - VBase;
 
-                buffer[i] = SBase + (LIndex * VCount + VIndex) * TCount;
-                buffer_ccc[i + 1] = 255;
+                buffer->cps[i] = SBase + (LIndex * VCount + VIndex) * TCount;
+                buffer->ccc[i + 1] = 255;
 
                 if (i + 2 < size)
                 {
-                    type_codept c3 = buffer[i + 2];
+                    type_codept c3 = buffer->cps[i + 2];
 
                     if (c3 > TBase && c3 < TBase + TCount)
                     {
-                        buffer[i] += c3 - TBase;
-                        buffer_ccc[i + 2] = 255;
+                        buffer->cps[i] += c3 - TBase;
+                        buffer->ccc[i + 2] = 255;
 
                         return 2;
                     }
@@ -54465,12 +55130,12 @@ uaix_static size_t norm_comp_hangul(size_t i, type_codept buffer[], unsigned cha
     {
         if (i + 1 < size)
         {
-            type_codept c2 = buffer[i + 1];
+            type_codept c2 = buffer->cps[i + 1];
 
             if (c2 > TBase && c2 < TBase + TCount)
             {
-                buffer[i] += c2 - TBase;
-                buffer_ccc[i + 1] = 255;
+                buffer->cps[i] += c2 - TBase;
+                buffer->ccc[i + 1] = 255;
 
                 return 1;
             }
@@ -54482,33 +55147,34 @@ uaix_static size_t norm_comp_hangul(size_t i, type_codept buffer[], unsigned cha
 }
 
 uaix_always_inline
-uaix_static void norm_comp(type_codept buffer[], unsigned char buffer_ccc[], size_t size)
+uaix_static void norm_comp(struct norm_buffer* const buffer, size_t size)
 {
     // Note: CCC=255 is used to mark composed code points
 
     if (size > 0)
     {
-        size_t starter = 0;
+        size_t starter = 0; // tag_must_be_initialized
+
         for (size_t i = 0; i < size - 1; ++i)
         {
-            size_t hangul = norm_comp_hangul(i, buffer, buffer_ccc, size);
+            size_t hangul = norm_comp_hangul(i, buffer, size);
             if (hangul)
             {
                 i += hangul;
                 continue;
             }
 
-            if (buffer_ccc[i] == 0)
+            if (buffer->ccc[i] == 0)
                 starter = i;
 
             // If there is a starter and non-blocked non-starter
-            if (starter == i || !(buffer_ccc[i] != 255 && buffer_ccc[i] >= buffer_ccc[i + 1]))
+            if (starter == i || !(buffer->ccc[i] != 255 && buffer->ccc[i] >= buffer->ccc[i + 1]))
             {
-                type_codept c = stages_comp(buffer[starter], buffer[i + 1]);
+                type_codept c = stages_comp(buffer->cps[starter], buffer->cps[i + 1]);
                 if (c != 0)
                 {
-                    buffer[starter] = c;
-                    buffer_ccc[i + 1] = 255;
+                    buffer->cps[starter] = c;
+                    buffer->ccc[i + 1] = 255;
                 }
             }
         }
@@ -54516,30 +55182,32 @@ uaix_static void norm_comp(type_codept buffer[], unsigned char buffer_ccc[], siz
 }
 
 uaix_always_inline
-uaix_static bool norm_decomp_return(unsigned char buffer_ccc[], size_t* size, size_t* last_qc)
+uaix_static bool norm_decomp_return(struct norm_buffer* const buffer, struct norm_multi* const m)
 {
+    // UNUSED: buffer->cps, m->count_ns
+
     // Flush the buffer by Quick_Check=Yes boundary.
-    if (*last_qc > 0)
+    if (m->last_qc > 0)
         return true;
 
     // More than 4 starters cannot compose together so flush the buffer.
     // In other words flush the buffer by CCC=0 boundary at this point.
-    // Note 1: actually 3 starters (Hanguls L+V+T and 0CCB) but use 4 (max composition) just in case.
+    // Note 1: actually 3 starters (Hanguls L+V+T and 0CCB) but use 4 (max canonical decomposition) just in case.
     // Note 2: this check only matters for NFC/NFKC because in NFD/NFKD such cases are not possible.
-    if (*size > 4 && buffer_ccc[*size - 1] == 0)
+    if (m->size > impl_max_norm_decomp_canon && buffer->ccc[m->size - 1] == 0)
     {
-        *last_qc = *size - 1;
+        m->last_qc = m->size - 1;
         return true;
     }
 
     // This must never happen so flush the buffer and stop to make it noticeable in tests.
-    // 18 is max decomposition so the next turn can exhaust the buffer.
-    if (*size + norm_max_decomposition > norm_buffer_size)
+    // 18 is max compatibility decomposition so the next turn can exhaust the buffer.
+    if (m->size + impl_max_norm_decomp_compat > norm_buffer_size)
     {
 #ifdef UNI_ALGO_TEST_ASSERT
         uaix_assert(false);
 #endif
-        *last_qc = *size;
+        m->last_qc = m->size;
         return true;
     }
 
@@ -54547,42 +55215,40 @@ uaix_static bool norm_decomp_return(unsigned char buffer_ccc[], size_t* size, si
 }
 
 uaix_always_inline
-uaix_static void norm_decomp_count_ns(type_codept buffer[], unsigned char buffer_ccc[],
-                                      size_t* size, size_t* last_qc, size_t* count_ns)
+uaix_static void norm_decomp_count_ns(struct norm_buffer* const buffer, struct norm_multi* const m)
 {
     // Insert U+034F COMBINING GRAPHEME JOINER (CGJ) if there is more than 30 non-starters
 
-    if (*count_ns > norm_buffer_max_non_starters)
+    if (m->count_ns > impl_max_norm_non_starters)
     {
-        *count_ns -= norm_buffer_max_non_starters;
-        buffer[*size] = 0x034F;
-        buffer_ccc[*size] = 0;
-        *last_qc = *size;
-        *size += 1;
+        m->count_ns -= impl_max_norm_non_starters;
+        buffer->cps[m->size] = 0x034F;
+        buffer->ccc[m->size] = 0;
+        m->last_qc = m->size;
+        ++m->size;
     }
 }
 
 uaix_always_inline
-uaix_static bool norm_decomp_nfc(type_codept c, type_codept buffer[], unsigned char buffer_ccc[],
-                                 size_t* size, size_t* last_qc, size_t* count_ns)
+uaix_static bool norm_decomp_nfc(type_codept c, struct norm_buffer* const buffer, struct norm_multi* const m)
 {
-    norm_decomp_count_ns(buffer, buffer_ccc, size, last_qc, count_ns);
+    norm_decomp_count_ns(buffer, m);
 
     // Need to decompose the first code point when NFC/NFKC,
     // it can be still composed if we drop here from fast loop
-    if (*size == 1)
+    if (m->size == 1)
     {
-        size_t offset = stages_decomp_nfd(buffer[0]);
+        size_t offset = stages_decomp_nfd(buffer->cps[0]);
         if (offset)
         {
-            *size = 0;
+            m->size = 0;
             size_t number = stages_decomp_nfd_number(offset);
-            for (size_t i = 0; i < number; ++i, *size += 1)
+            for (size_t i = 0; i < number; ++i, ++m->size)
             {
-                buffer[*size] = stages_decomp_nfd_cp(offset, i);
-                buffer_ccc[*size] = stages_ccc(buffer[*size]);
-                if (stages_qc_yes_nfc(buffer[*size]))
-                    *last_qc = *size;
+                buffer->cps[m->size] = stages_decomp_nfd_cp(offset, i);
+                buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
+                if (stages_qc_yes_nfc(buffer->cps[m->size]))
+                    m->last_qc = m->size;
             }
         }
     }
@@ -54595,179 +55261,176 @@ uaix_static bool norm_decomp_nfc(type_codept c, type_codept buffer[], unsigned c
     // Test string: "\x005A\x0301\x0179\x0179\x0179\x0179\x0179"
     if (stages_qc_yes_nfc(c))
     {
-        buffer[*size] = c;
-        buffer_ccc[*size] = stages_ccc(c);
-        *last_qc = *size;
-        *size += 1;
+        buffer->cps[m->size] = c;
+        buffer->ccc[m->size] = stages_ccc(c);
+        m->last_qc = m->size;
+        ++m->size;
     }
     else
     {
         size_t offset = stages_decomp_nfd(c);
         if (offset == 0)
         {
-            buffer[*size] = c;
-            buffer_ccc[*size] = stages_ccc(c);
+            buffer->cps[m->size] = c;
+            buffer->ccc[m->size] = stages_ccc(c);
             if (stages_qc_yes_nfc(c))
-                *last_qc = *size;
-            *size += 1;
+                m->last_qc = m->size;
+            ++m->size;
         }
         else
         {
             size_t number = stages_decomp_nfd_number(offset);
-            for (size_t i = 0; i < number; ++i, *size += 1)
+            for (size_t i = 0; i < number; ++i, ++m->size)
             {
-                buffer[*size] = stages_decomp_nfd_cp(offset, i);
-                buffer_ccc[*size] = stages_ccc(buffer[*size]);
-                if (stages_qc_yes_nfc(buffer[*size]))
-                    *last_qc = *size;
+                buffer->cps[m->size] = stages_decomp_nfd_cp(offset, i);
+                buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
+                if (stages_qc_yes_nfc(buffer->cps[m->size]))
+                    m->last_qc = m->size;
             }
         }
     }
 
-    return norm_decomp_return(buffer_ccc, size, last_qc);
+    return norm_decomp_return(buffer, m);
 }
 
 uaix_always_inline
-uaix_static bool norm_decomp_nfd(type_codept c, type_codept buffer[], unsigned char buffer_ccc[],
-                                 size_t* size, size_t* last_qc, size_t* count_ns)
+uaix_static bool norm_decomp_nfd(type_codept c, struct norm_buffer* const buffer, struct norm_multi* const m)
 {
     // Almost the same as norm_decomp_nfc but decompose everything
 
-    norm_decomp_count_ns(buffer, buffer_ccc, size, last_qc, count_ns);
+    norm_decomp_count_ns(buffer, m);
 
-    size_t hangul = norm_decomp_hangul(c, *size, buffer, buffer_ccc);
+    size_t hangul = norm_decomp_hangul(c, m->size, buffer);
     if (hangul)
     {
-        *last_qc = *size;
-        *size += hangul;
+        m->last_qc = m->size;
+        m->size += hangul;
     }
     else
     {
         size_t offset = stages_decomp_nfd(c);
         if (offset == 0)
         {
-            buffer[*size] = c;
-            buffer_ccc[*size] = stages_ccc(c);
+            buffer->cps[m->size] = c;
+            buffer->ccc[m->size] = stages_ccc(c);
             if (stages_qc_yes_nfd(c))
-                *last_qc = *size;
-            *size += 1;
+                m->last_qc = m->size;
+            ++m->size;
         }
         else
         {
             size_t number = stages_decomp_nfd_number(offset);
-            for (size_t i = 0; i < number; ++i, *size += 1)
+            for (size_t i = 0; i < number; ++i, ++m->size)
             {
-                buffer[*size] = stages_decomp_nfd_cp(offset, i);
-                buffer_ccc[*size] = stages_ccc(buffer[*size]);
-                if (stages_qc_yes_nfd(buffer[*size]))
-                    *last_qc = *size;
+                buffer->cps[m->size] = stages_decomp_nfd_cp(offset, i);
+                buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
+                if (stages_qc_yes_nfd(buffer->cps[m->size]))
+                    m->last_qc = m->size;
             }
         }
     }
 
-    return norm_decomp_return(buffer_ccc, size, last_qc);
+    return norm_decomp_return(buffer, m);
 }
 
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 
 uaix_always_inline
-uaix_static bool norm_decomp_nfkc(type_codept c, type_codept buffer[], unsigned char buffer_ccc[],
-                                  size_t* size, size_t* last_qc, size_t* count_ns)
+uaix_static bool norm_decomp_nfkc(type_codept c, struct norm_buffer* const buffer, struct norm_multi* const m)
 {
     // The same as norm_decomp_nfc but uses NFKC data
 
-    norm_decomp_count_ns(buffer, buffer_ccc, size, last_qc, count_ns);
+    norm_decomp_count_ns(buffer, m);
 
-    if (*size == 1)
+    if (m->size == 1)
     {
-        size_t offset = stages_decomp_nfkd(buffer[0]);
+        size_t offset = stages_decomp_nfkd(buffer->cps[0]);
         if (offset)
         {
-            *size = 0;
+            m->size = 0;
             size_t number = stages_decomp_nfkd_number(offset);
-            for (size_t i = 0; i < number; ++i, *size += 1)
+            for (size_t i = 0; i < number; ++i, ++m->size)
             {
-                buffer[*size] = stages_decomp_nfkd_cp(offset, i);
-                buffer_ccc[*size] = stages_ccc(buffer[*size]);
-                if (stages_qc_yes_nfkc(buffer[*size]))
-                    *last_qc = *size;
+                buffer->cps[m->size] = stages_decomp_nfkd_cp(offset, i);
+                buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
+                if (stages_qc_yes_nfkc(buffer->cps[m->size]))
+                    m->last_qc = m->size;
             }
         }
     }
 
     if (stages_qc_yes_nfkc(c))
     {
-        buffer[*size] = c;
-        buffer_ccc[*size] = stages_ccc(c);
-        *last_qc = *size;
-        *size += 1;
+        buffer->cps[m->size] = c;
+        buffer->ccc[m->size] = stages_ccc(c);
+        m->last_qc = m->size;
+        ++m->size;
     }
     else
     {
         size_t offset = stages_decomp_nfkd(c);
         if (offset == 0)
         {
-            buffer[*size] = c;
-            buffer_ccc[*size] = stages_ccc(c);
+            buffer->cps[m->size] = c;
+            buffer->ccc[m->size] = stages_ccc(c);
             if (stages_qc_yes_nfkc(c))
-                *last_qc = *size;
-            *size += 1;
+                m->last_qc = m->size;
+            ++m->size;
         }
         else
         {
             size_t number = stages_decomp_nfkd_number(offset);
-            for (size_t i = 0; i < number; ++i, *size += 1)
+            for (size_t i = 0; i < number; ++i, ++m->size)
             {
-                buffer[*size] = stages_decomp_nfkd_cp(offset, i);
-                buffer_ccc[*size] = stages_ccc(buffer[*size]);
-                if (stages_qc_yes_nfkc(buffer[*size]))
-                    *last_qc = *size;
+                buffer->cps[m->size] = stages_decomp_nfkd_cp(offset, i);
+                buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
+                if (stages_qc_yes_nfkc(buffer->cps[m->size]))
+                    m->last_qc = m->size;
             }
         }
     }
 
-    return norm_decomp_return(buffer_ccc, size, last_qc);
+    return norm_decomp_return(buffer, m);
 }
 
 uaix_always_inline
-uaix_static bool norm_decomp_nfkd(type_codept c, type_codept buffer[], unsigned char buffer_ccc[],
-                                  size_t* size, size_t* last_qc, size_t* count_ns)
+uaix_static bool norm_decomp_nfkd(type_codept c, struct norm_buffer* const buffer, struct norm_multi* const m)
 {
     // The same as norm_decomp_nfd but uses NFKD data
 
-    norm_decomp_count_ns(buffer, buffer_ccc, size, last_qc, count_ns);
+    norm_decomp_count_ns(buffer, m);
 
-    size_t hangul = norm_decomp_hangul(c, *size, buffer, buffer_ccc);
+    size_t hangul = norm_decomp_hangul(c, m->size, buffer);
     if (hangul)
     {
-        *last_qc = *size;
-        *size += hangul;
+        m->last_qc = m->size;
+        m->size += hangul;
     }
     else
     {
         size_t offset = stages_decomp_nfkd(c);
         if (offset == 0)
         {
-            buffer[*size] = c;
-            buffer_ccc[*size] = stages_ccc(c);
+            buffer->cps[m->size] = c;
+            buffer->ccc[m->size] = stages_ccc(c);
             if (stages_qc_yes_nfkd(c))
-                *last_qc = *size;
-            *size += 1;
+                m->last_qc = m->size;
+            ++m->size;
         }
         else
         {
             size_t number = stages_decomp_nfkd_number(offset);
-            for (size_t i = 0; i < number; ++i, *size += 1)
+            for (size_t i = 0; i < number; ++i, ++m->size)
             {
-                buffer[*size] = stages_decomp_nfkd_cp(offset, i);
-                buffer_ccc[*size] = stages_ccc(buffer[*size]);
-                if (stages_qc_yes_nfkd(buffer[*size]))
-                    *last_qc = *size;
+                buffer->cps[m->size] = stages_decomp_nfkd_cp(offset, i);
+                buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
+                if (stages_qc_yes_nfkd(buffer->cps[m->size]))
+                    m->last_qc = m->size;
             }
         }
     }
 
-    return norm_decomp_return(buffer_ccc, size, last_qc);
+    return norm_decomp_return(buffer, m);
 }
 
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
@@ -54775,24 +55438,23 @@ uaix_static bool norm_decomp_nfkd(type_codept c, type_codept buffer[], unsigned 
 #ifndef UNI_ALGO_DISABLE_PROP
 
 uaix_always_inline
-uaix_static bool norm_decomp_unaccent(type_codept c, type_codept buffer[], unsigned char buffer_ccc[],
-                                      size_t* size, size_t* last_qc, size_t* count_ns)
+uaix_static bool norm_decomp_unaccent(type_codept c, struct norm_buffer* const buffer, struct norm_multi* const m)
 {
     // Ignore Hanguls, decompose to NFD, skip Nonspacing Mark
     // The full algorithm is: NFD -> remove Nonspacing Mark -> NFC
 
-    norm_decomp_count_ns(buffer, buffer_ccc, size, last_qc, count_ns);
+    norm_decomp_count_ns(buffer, m);
 
     size_t offset = stages_decomp_nfd(c);
     if (offset == 0)
     {
         if (impl_prop_get_gc_prop(impl_prop_get_prop(c)) != impl_General_Category_Mn)
         {
-            buffer[*size] = c;
-            buffer_ccc[*size] = stages_ccc(c);
+            buffer->cps[m->size] = c;
+            buffer->ccc[m->size] = stages_ccc(c);
             if (stages_qc_yes_nfd(c))
-                *last_qc = *size;
-            *size += 1;
+                m->last_qc = m->size;
+            ++m->size;
         }
     }
     else
@@ -54803,33 +55465,35 @@ uaix_static bool norm_decomp_unaccent(type_codept c, type_codept buffer[], unsig
             type_codept cp = stages_decomp_nfd_cp(offset, i);
             if (impl_prop_get_gc_prop(impl_prop_get_prop(cp)) != impl_General_Category_Mn)
             {
-                buffer[*size] = cp;
-                buffer_ccc[*size] = stages_ccc(cp);
+                buffer->cps[m->size] = cp;
+                buffer->ccc[m->size] = stages_ccc(cp);
                 if (stages_qc_yes_nfd(cp))
-                    *last_qc = *size;
-                *size += 1;
+                    m->last_qc = m->size;
+                ++m->size;
             }
         }
     }
 
-    return norm_decomp_return(buffer_ccc, size, last_qc);
+    return norm_decomp_return(buffer, m);
 }
 
 #endif // UNI_ALGO_DISABLE_PROP
 
 uaix_always_inline
-uaix_static void norm_buffer(type_codept buffer[], unsigned char buffer_ccc[], size_t* size, size_t* last_qc)
+uaix_static void norm_proc_buffer(struct norm_buffer* const buffer, struct norm_multi* const m)
 {
+    // UNUSED: m->count_ns
+
     // Move the last decomposed code point that between last_qc and size to the start
     // last_qc is last Quick_Check=Yes mark
 
-    for (size_t i = 0, j = *last_qc; j < *size; ++i, ++j)
+    for (size_t i = 0, j = m->last_qc; j < m->size; ++i, ++j)
     {
-        buffer[i] = buffer[j];
-        buffer_ccc[i] = buffer_ccc[j];
+        buffer->cps[i] = buffer->cps[j];
+        buffer->ccc[i] = buffer->ccc[j];
     }
-    *size = *size - *last_qc;
-    *last_qc = 0;
+    m->size = m->size - m->last_qc;
+    m->last_qc = 0;
 }
 
 #ifdef __cplusplus
@@ -54840,11 +55504,10 @@ uaix_static size_t impl_norm_to_nfc_utf8(it_in_utf8 first, it_end_utf8 last, it_
     it_in_utf8 src = first;
     it_out_utf8 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     /* while (src != last) is the fast loop, any slow down there reduces the performance drastically,
      * so everything moved outside this loop and we drop there if we actually need to do something.
@@ -54853,7 +55516,6 @@ uaix_static size_t impl_norm_to_nfc_utf8(it_in_utf8 first, it_end_utf8 last, it_
      * it's impossible to achieve the same speed of the fast loop as in an algorithm that doesn't support streams.
      * ifs are written like that to avoid unnecessary jumps so it gives the best performance.
      * __builtin_expect is used because it achieves a better performance in GCC.
-     * TODO: questionable, this likely in while looks funny, should be retested with different GCC versions.
      * Other normalization functions are based on this function.
      */
 
@@ -54862,40 +55524,40 @@ uaix_static size_t impl_norm_to_nfc_utf8(it_in_utf8 first, it_end_utf8 last, it_
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfc(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfc(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf8(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf8(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue; // Fast loop ends here
                 }
             }
-            if (norm_decomp_nfc(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_nfc(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0) // The end of the data if we are here without last_qc
-            last_qc = size;
+        if (m.last_qc == 0) // The end of the data if we are here without last_qc
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
-        norm_comp(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
+        norm_comp(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
+        for (size_t i = 0; i < m.last_qc; ++i)
         {
-            if (buffer_ccc[i] != 255)
-                dst = codepoint_to_utf8(buffer[i], dst);
+            if (buffer.ccc[i] != 255)
+                dst = codepoint_to_utf8(buffer.cps[i], dst);
         }
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -54910,47 +55572,46 @@ uaix_static size_t impl_norm_to_nfd_utf8(it_in_utf8 first, it_end_utf8 last, it_
     it_in_utf8 src = first;
     it_out_utf8 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     do
     {
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfd(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfd(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf8(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf8(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue;
                 }
             }
-            if (norm_decomp_nfd(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_nfd(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0)
-            last_qc = size;
+        if (m.last_qc == 0)
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
-            dst = codepoint_to_utf8(buffer[i], dst);
+        for (size_t i = 0; i < m.last_qc; ++i)
+            dst = codepoint_to_utf8(buffer.cps[i], dst);
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -54967,51 +55628,50 @@ uaix_static size_t impl_norm_to_nfkc_utf8(it_in_utf8 first, it_end_utf8 last, it
     it_in_utf8 src = first;
     it_out_utf8 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     do
     {
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfkc(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfkc(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf8(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf8(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue;
                 }
             }
-            if (norm_decomp_nfkc(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_nfkc(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0)
-            last_qc = size;
+        if (m.last_qc == 0)
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
-        norm_comp(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
+        norm_comp(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
+        for (size_t i = 0; i < m.last_qc; ++i)
         {
-            if (buffer_ccc[i] != 255)
-                dst = codepoint_to_utf8(buffer[i], dst);
+            if (buffer.ccc[i] != 255)
+                dst = codepoint_to_utf8(buffer.cps[i], dst);
         }
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -55026,47 +55686,46 @@ uaix_static size_t impl_norm_to_nfkd_utf8(it_in_utf8 first, it_end_utf8 last, it
     it_in_utf8 src = first;
     it_out_utf8 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     do
     {
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfkd(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfkd(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf8(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf8(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue;
                 }
             }
-            if (norm_decomp_nfkd(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_nfkd(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0)
-            last_qc = size;
+        if (m.last_qc == 0)
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
-            dst = codepoint_to_utf8(buffer[i], dst);
+        for (size_t i = 0; i < m.last_qc; ++i)
+            dst = codepoint_to_utf8(buffer.cps[i], dst);
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -55083,11 +55742,10 @@ uaix_static size_t impl_norm_to_unaccent_utf8(it_in_utf8 first, it_end_utf8 last
     it_in_utf8 src = first;
     it_out_utf8 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     // Algorithm: NFD -> remove Nonspacing Mark -> NFC
 
@@ -55096,40 +55754,40 @@ uaix_static size_t impl_norm_to_unaccent_utf8(it_in_utf8 first, it_end_utf8 last
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfd(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfd(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf8(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf8(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue;
                 }
             }
-            if (norm_decomp_unaccent(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_unaccent(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0)
-            last_qc = size;
+        if (m.last_qc == 0)
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
-        norm_comp(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
+        norm_comp(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
+        for (size_t i = 0; i < m.last_qc; ++i)
         {
-            if (buffer_ccc[i] != 255)
-                dst = codepoint_to_utf8(buffer[i], dst);
+            if (buffer.ccc[i] != 255)
+                dst = codepoint_to_utf8(buffer.cps[i], dst);
         }
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -55143,8 +55801,8 @@ uaix_static int impl_norm_is_nfc_utf8(it_in_utf8 first, it_end_utf8 last)
 {
     it_in_utf8 src = first;
 
-    unsigned char last_ccc = 0;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    unsigned char last_ccc = 0; // tag_must_be_initialized
 
     while (src != last)
     {
@@ -55164,8 +55822,8 @@ uaix_static int impl_norm_is_nfd_utf8(it_in_utf8 first, it_end_utf8 last)
 {
     it_in_utf8 src = first;
 
-    unsigned char last_ccc = 0;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    unsigned char last_ccc = 0; // tag_must_be_initialized
 
     while (src != last)
     {
@@ -55187,8 +55845,8 @@ uaix_static int impl_norm_is_nfkc_utf8(it_in_utf8 first, it_end_utf8 last)
 {
     it_in_utf8 src = first;
 
-    unsigned char last_ccc = 0;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    unsigned char last_ccc = 0; // tag_must_be_initialized
 
     while (src != last)
     {
@@ -55208,8 +55866,8 @@ uaix_static int impl_norm_is_nfkd_utf8(it_in_utf8 first, it_end_utf8 last)
 {
     it_in_utf8 src = first;
 
-    unsigned char last_ccc = 0;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    unsigned char last_ccc = 0; // tag_must_be_initialized
 
     while (src != last)
     {
@@ -55235,51 +55893,50 @@ uaix_static size_t impl_norm_to_nfc_utf16(it_in_utf16 first, it_end_utf16 last, 
     it_in_utf16 src = first;
     it_out_utf16 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     do
     {
-        while (uaix_likely(src != last))
+        while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfc(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfc(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf16(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf16(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue; // Fast loop ends here
                 }
             }
-            if (norm_decomp_nfc(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_nfc(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0) // The end of the data if we are here without last_qc
-            last_qc = size;
+        if (m.last_qc == 0) // The end of the data if we are here without last_qc
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
-        norm_comp(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
+        norm_comp(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
+        for (size_t i = 0; i < m.last_qc; ++i)
         {
-            if (buffer_ccc[i] != 255)
-                dst = codepoint_to_utf16(buffer[i], dst);
+            if (buffer.ccc[i] != 255)
+                dst = codepoint_to_utf16(buffer.cps[i], dst);
         }
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -55292,47 +55949,46 @@ uaix_static size_t impl_norm_to_nfd_utf16(it_in_utf16 first, it_end_utf16 last, 
     it_in_utf16 src = first;
     it_out_utf16 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     do
     {
         while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfd(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfd(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf16(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf16(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue;
                 }
             }
-            if (norm_decomp_nfd(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_nfd(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0)
-            last_qc = size;
+        if (m.last_qc == 0)
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
-            dst = codepoint_to_utf16(buffer[i], dst);
+        for (size_t i = 0; i < m.last_qc; ++i)
+            dst = codepoint_to_utf16(buffer.cps[i], dst);
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -55347,51 +56003,50 @@ uaix_static size_t impl_norm_to_nfkc_utf16(it_in_utf16 first, it_end_utf16 last,
     it_in_utf16 src = first;
     it_out_utf16 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     do
     {
         while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfkc(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfkc(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf16(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf16(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue;
                 }
             }
-            if (norm_decomp_nfkc(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_nfkc(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0)
-            last_qc = size;
+        if (m.last_qc == 0)
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
-        norm_comp(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
+        norm_comp(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
+        for (size_t i = 0; i < m.last_qc; ++i)
         {
-            if (buffer_ccc[i] != 255)
-                dst = codepoint_to_utf16(buffer[i], dst);
+            if (buffer.ccc[i] != 255)
+                dst = codepoint_to_utf16(buffer.cps[i], dst);
         }
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -55404,47 +56059,46 @@ uaix_static size_t impl_norm_to_nfkd_utf16(it_in_utf16 first, it_end_utf16 last,
     it_in_utf16 src = first;
     it_out_utf16 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     do
     {
         while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfkd(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfkd(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf16(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf16(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue;
                 }
             }
-            if (norm_decomp_nfkd(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_nfkd(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0)
-            last_qc = size;
+        if (m.last_qc == 0)
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
-            dst = codepoint_to_utf16(buffer[i], dst);
+        for (size_t i = 0; i < m.last_qc; ++i)
+            dst = codepoint_to_utf16(buffer.cps[i], dst);
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -55461,51 +56115,50 @@ uaix_static size_t impl_norm_to_unaccent_utf16(it_in_utf16 first, it_end_utf16 l
     it_in_utf16 src = first;
     it_out_utf16 dst = result;
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    type_codept c = 0; // tag_can_be_uninitialized
 
-    size_t size = 0, last_qc = 0, count_ns = 0;
-    type_codept c = 0;
+    struct norm_buffer buffer = {{0}, {0}}; // tag_can_be_uninitialized
+    struct norm_multi m = {0, 0, 0}; // tag_must_be_initialized
 
     do
     {
         while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfd(c, &count_ns)))
+            if (uaix_likely(stages_qc_yes_ns_nfd(c, &m.count_ns)))
             {
-                if (uaix_likely(size == 1))
+                if (uaix_likely(m.size == 1))
                 {
-                    dst = codepoint_to_utf16(buffer[0], dst);
-                    size = 0;
+                    dst = codepoint_to_utf16(buffer.cps[0], dst);
+                    m.size = 0;
                 }
-                if (uaix_likely(size == 0))
+                if (uaix_likely(m.size == 0))
                 {
-                    buffer[0] = c;
-                    buffer_ccc[0] = 0;
-                    size = 1;
+                    buffer.cps[0] = c;
+                    buffer.ccc[0] = 0;
+                    m.size = 1;
                     continue;
                 }
             }
-            if (norm_decomp_unaccent(c, buffer, buffer_ccc, &size, &last_qc, &count_ns))
+            if (norm_decomp_unaccent(c, &buffer, &m))
                 break;
         }
 
-        if (last_qc == 0)
-            last_qc = size;
+        if (m.last_qc == 0)
+            m.last_qc = m.size;
 
-        norm_order(buffer, buffer_ccc, last_qc);
-        norm_comp(buffer, buffer_ccc, last_qc);
+        norm_order(&buffer, m.last_qc);
+        norm_comp(&buffer, m.last_qc);
 
-        for (size_t i = 0; i < last_qc; ++i)
+        for (size_t i = 0; i < m.last_qc; ++i)
         {
-            if (buffer_ccc[i] != 255)
-                dst = codepoint_to_utf16(buffer[i], dst);
+            if (buffer.ccc[i] != 255)
+                dst = codepoint_to_utf16(buffer.cps[i], dst);
         }
 
-        norm_buffer(buffer, buffer_ccc, &size, &last_qc);
+        norm_proc_buffer(&buffer, &m);
     }
-    while (size > 0);
+    while (m.size > 0);
 
     return (size_t)(dst - result);
 }
@@ -55519,8 +56172,8 @@ uaix_static int impl_norm_is_nfc_utf16(it_in_utf16 first, it_end_utf16 last)
 {
     it_in_utf16 src = first;
 
-    unsigned char last_ccc = 0;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    unsigned char last_ccc = 0; // tag_must_be_initialized
 
     while (src != last)
     {
@@ -55540,8 +56193,8 @@ uaix_static int impl_norm_is_nfd_utf16(it_in_utf16 first, it_end_utf16 last)
 {
     it_in_utf16 src = first;
 
-    unsigned char last_ccc = 0;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    unsigned char last_ccc = 0; // tag_must_be_initialized
 
     while (src != last)
     {
@@ -55563,8 +56216,8 @@ uaix_static int impl_norm_is_nfkc_utf16(it_in_utf16 first, it_end_utf16 last)
 {
     it_in_utf16 src = first;
 
+    type_codept c = 0; // tag_can_be_uninitialized
     unsigned char last_ccc = 0;
-    type_codept c = 0;
 
     while (src != last)
     {
@@ -55584,8 +56237,8 @@ uaix_static int impl_norm_is_nfkd_utf16(it_in_utf16 first, it_end_utf16 last)
 {
     it_in_utf16 src = first;
 
-    unsigned char last_ccc = 0;
-    type_codept c = 0;
+    type_codept c = 0; // tag_can_be_uninitialized
+    unsigned char last_ccc = 0; // tag_must_be_initialized
 
     while (src != last)
     {
@@ -55607,26 +56260,23 @@ uaix_static int impl_norm_is_nfkd_utf16(it_in_utf16 first, it_end_utf16 last)
 
 struct impl_norm_iter_state
 {
-    size_t size;
-    size_t last_qc;
-    size_t count_ns;
-
     size_t pos; // Iterator position
 
-    type_codept buffer[norm_buffer_size];
-    unsigned char buffer_ccc[norm_buffer_size];
+    struct norm_multi m;
+    struct norm_buffer buffer;
 };
 
-uaix_inline void impl_norm_iter_state_reset(struct impl_norm_iter_state* s)
+uaix_inline void impl_norm_iter_state_reset(struct impl_norm_iter_state* const s)
 {
-    s->size = 0;
-    s->last_qc = 0;
-    s->count_ns = 0;
     s->pos = 0;
+
+    s->m.size = 0;
+    s->m.last_qc = 0;
+    s->m.count_ns = 0;
 }
 
 uaix_always_inline
-uaix_static bool unstable_norm_iter_ready(struct impl_norm_iter_state* s)
+uaix_static bool inline_norm_iter_ready(struct impl_norm_iter_state* const s)
 {
     return s->pos == 0 ? false : true;
 }
@@ -55642,27 +56292,32 @@ uaix_static type_codept norm_safe_cp(type_codept c)
 }
 
 uaix_always_inline
-uaix_static bool norm_state_fast_1(struct impl_norm_iter_state* s, type_codept c)
+uaix_static bool norm_state_fast_1(struct impl_norm_iter_state* const s, type_codept c)
 {
-    s->buffer[1] = c;
-    s->buffer_ccc[1] = 0;
-    s->size = 2;
-    s->last_qc = 1;
     s->pos = 0;
+
+    s->m.size = 2;
+    s->m.last_qc = 1;
+
+    s->buffer.cps[1] = c;
+    s->buffer.ccc[1] = 0;
+
     return true;
 }
 
 uaix_always_inline
-uaix_static bool norm_state_fast_0(struct impl_norm_iter_state* s, type_codept c)
+uaix_static bool norm_state_fast_0(struct impl_norm_iter_state* const s, type_codept c)
 {
-    s->buffer[0] = c;
-    s->buffer_ccc[0] = 0;
-    s->size = 1;
+    s->m.size = 1;
+
+    s->buffer.cps[0] = c;
+    s->buffer.ccc[0] = 0;
+
     return false;
 }
 
 uaix_always_inline
-uaix_static bool unstable_norm_iter_nfc(struct impl_norm_iter_state* s, type_codept c)
+uaix_static bool inline_norm_iter_nfc(struct impl_norm_iter_state* const s, type_codept c)
 {
     // Note that we cannot implement a fast loop inside the normalization iterators
     // but we can use the same idea to make them a bit faster.
@@ -55672,31 +56327,31 @@ uaix_static bool unstable_norm_iter_nfc(struct impl_norm_iter_state* s, type_cod
     // I hate myself so much sometimes.
 
     c = norm_safe_cp(c);
-    if (stages_qc_yes_ns_nfc(c, &s->count_ns))
+    if (stages_qc_yes_ns_nfc(c, &s->m.count_ns))
     {
-        if (s->size == 1)
+        if (s->m.size == 1)
             return norm_state_fast_1(s, c);
-        if (s->size == 0)
+        if (s->m.size == 0)
             return norm_state_fast_0(s, c);
     }
-    if (!norm_decomp_nfc(c, s->buffer, s->buffer_ccc, &s->size, &s->last_qc, &s->count_ns))
+    if (!norm_decomp_nfc(c, &s->buffer, &s->m))
         return false;
 
     return true;
 }
 
 uaix_always_inline
-uaix_static bool unstable_norm_iter_nfd(struct impl_norm_iter_state* s, type_codept c)
+uaix_static bool inline_norm_iter_nfd(struct impl_norm_iter_state* const s, type_codept c)
 {
     c = norm_safe_cp(c);
-    if (stages_qc_yes_ns_nfd(c, &s->count_ns))
+    if (stages_qc_yes_ns_nfd(c, &s->m.count_ns))
     {
-        if (s->size == 1)
+        if (s->m.size == 1)
             return norm_state_fast_1(s, c);
-        if (s->size == 0)
+        if (s->m.size == 0)
             return norm_state_fast_0(s, c);
     }
-    if (!norm_decomp_nfd(c, s->buffer, s->buffer_ccc, &s->size, &s->last_qc, &s->count_ns))
+    if (!norm_decomp_nfd(c, &s->buffer, &s->m))
         return false;
 
     return true;
@@ -55705,34 +56360,34 @@ uaix_static bool unstable_norm_iter_nfd(struct impl_norm_iter_state* s, type_cod
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 
 uaix_always_inline
-uaix_static bool unstable_norm_iter_nfkc(struct impl_norm_iter_state* s, type_codept c)
+uaix_static bool inline_norm_iter_nfkc(struct impl_norm_iter_state* const s, type_codept c)
 {
     c = norm_safe_cp(c);
-    if (stages_qc_yes_ns_nfkc(c, &s->count_ns))
+    if (stages_qc_yes_ns_nfkc(c, &s->m.count_ns))
     {
-        if (s->size == 1)
+        if (s->m.size == 1)
             return norm_state_fast_1(s, c);
-        if (s->size == 0)
+        if (s->m.size == 0)
             return norm_state_fast_0(s, c);
     }
-    if (!norm_decomp_nfkc(c, s->buffer, s->buffer_ccc, &s->size, &s->last_qc, &s->count_ns))
+    if (!norm_decomp_nfkc(c, &s->buffer, &s->m))
         return false;
 
     return true;
 }
 
 uaix_always_inline
-uaix_static bool unstable_norm_iter_nfkd(struct impl_norm_iter_state* s, type_codept c)
+uaix_static bool inline_norm_iter_nfkd(struct impl_norm_iter_state* const s, type_codept c)
 {
     c = norm_safe_cp(c);
-    if (stages_qc_yes_ns_nfkd(c, &s->count_ns))
+    if (stages_qc_yes_ns_nfkd(c, &s->m.count_ns))
     {
-        if (s->size == 1)
+        if (s->m.size == 1)
             return norm_state_fast_1(s, c);
-        if (s->size == 0)
+        if (s->m.size == 0)
             return norm_state_fast_0(s, c);
     }
-    if (!norm_decomp_nfkd(c, s->buffer, s->buffer_ccc, &s->size, &s->last_qc, &s->count_ns))
+    if (!norm_decomp_nfkd(c, &s->buffer, &s->m))
         return false;
 
     return true;
@@ -55741,44 +56396,39 @@ uaix_static bool unstable_norm_iter_nfkd(struct impl_norm_iter_state* s, type_co
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 uaix_always_inline
-uaix_static bool unstable_norm_iter_next_comp(struct impl_norm_iter_state* s, type_codept* codepoint)
+uaix_static bool inline_norm_iter_next_comp(struct impl_norm_iter_state* const s, type_codept* const codepoint)
 {
-    // The function must be used together with unstable_norm_iter_nfc or unstable_norm_iter_nfc
-    // The function must be used together with impl_state_norm_nfc or impl_state_norm_nfkc (OLD)
-    // TODO: names:
-    // norm_iter_comp_nfc_nfkc: impl_norm_iter_comp_nfc, impl_norm_iter_comp_nfkc + impl_norm_iter_nfc etc.
-    // norm_iter_comp_nfc_nfkc: impl_norm_iter_comp_nfc, impl_norm_iter_comp_nfkc + impl_norm_iter_decomp_nfc etc.
-    // norm_iter_next_nfc_nfkc: impl_norm_iter_next_nfc, impl_norm_iter_next_nfkc + impl_norm_iter_nfc etc. (prob this is the best)
+    // The function must be used together with inline_norm_iter_nfc or inline_norm_iter_nfkc
 
-    if (s->size == 0) // The end of the data
+    if (s->m.size == 0) // The end of the data
         return false;
 
-    if (s->last_qc == 0) // This is the last buffer
-        s->last_qc = s->size;
+    if (s->m.last_qc == 0) // This is the last buffer
+        s->m.last_qc = s->m.size;
 
     // Reorder and compose the buffer if this is the first iteration on this buffer
     if (s->pos == 0)
     {
-        norm_order(s->buffer, s->buffer_ccc, s->last_qc);
-        norm_comp(s->buffer, s->buffer_ccc, s->last_qc);
+        norm_order(&s->buffer, s->m.last_qc);
+        norm_comp(&s->buffer, s->m.last_qc);
     }
 
     // Skip all CCC=255 and get the next code point
     bool found = false;
-    for (; s->pos < s->last_qc; ++s->pos)
+    for (; s->pos < s->m.last_qc; ++s->pos)
     {
-        if (s->buffer_ccc[s->pos] != 255)
+        if (s->buffer.ccc[s->pos] != 255)
         {
             if (found) break;
-            *codepoint = s->buffer[s->pos];
+            *codepoint = s->buffer.cps[s->pos];
             found = true;
         }
     }
 
     // This is the last iteration on this buffer, request more data
-    if (s->pos == s->last_qc)
+    if (s->pos == s->m.last_qc)
     {
-        norm_buffer(s->buffer, s->buffer_ccc, &s->size, &s->last_qc);
+        norm_proc_buffer(&s->buffer, &s->m);
         s->pos = 0;
     }
 
@@ -55786,32 +56436,31 @@ uaix_static bool unstable_norm_iter_next_comp(struct impl_norm_iter_state* s, ty
 }
 
 uaix_always_inline
-uaix_static bool unstable_norm_iter_next_decomp(struct impl_norm_iter_state* s, type_codept* codepoint)
+uaix_static bool inline_norm_iter_next_decomp(struct impl_norm_iter_state* const s, type_codept* const codepoint)
 {
-    // The function must be used together with unstable_norm_iter_nfd or unstable_norm_iter_nfkd
-    // The function must be used together with impl_state_norm_nfd or impl_state_norm_nfkd (OLD)
+    // The function must be used together with inline_norm_iter_nfd or inline_norm_iter_nfkd
 
-    if (s->size == 0) // The end of the data
+    if (s->m.size == 0) // The end of the data
         return false;
 
-    if (s->last_qc == 0) // This is the last buffer
-        s->last_qc = s->size;
+    if (s->m.last_qc == 0) // This is the last buffer
+        s->m.last_qc = s->m.size;
 
     // Reorder the buffer if this is the first iteration on this buffer
     if (s->pos == 0)
-        norm_order(s->buffer, s->buffer_ccc, s->last_qc);
+        norm_order(&s->buffer, s->m.last_qc);
 
     // Get the next code point
-    if (s->pos < s->last_qc)
+    if (s->pos < s->m.last_qc)
     {
-        *codepoint = s->buffer[s->pos];
+        *codepoint = s->buffer.cps[s->pos];
         ++s->pos;
     }
 
     // This is the last iteration on this buffer, request more data
-    if (s->pos == s->last_qc)
+    if (s->pos == s->m.last_qc)
     {
-        norm_buffer(s->buffer, s->buffer_ccc, &s->size, &s->last_qc);
+        norm_proc_buffer(&s->buffer, &s->m);
         s->pos = 0;
     }
 
@@ -55953,12 +56602,12 @@ uaix_static size_t norm_to_decomp_hangul(type_codept c, it_out_utf32 dst)
         type_codept VPart = VBase + (SIndex % NCount) / TCount;
         type_codept TPart = TBase + SIndex % TCount;
 
-        *dst++ = LPart;
-        *dst++ = VPart;
+        *dst++ = (type_char32)LPart;
+        *dst++ = (type_char32)VPart;
 
         if (TPart != TBase)
         {
-            *dst++ = TPart;
+            *dst++ = (type_char32)TPart;
             return 3;
         }
         return 2;
@@ -55978,7 +56627,7 @@ uaix_static size_t impl_norm_to_decompose_hangul(type_codept c, it_out_utf32 dst
         if (hangul)
             return hangul;
 
-        *dst = c;
+        *dst = (type_char32)c;
     }
     else
         *dst = 0xFFFD;
@@ -56003,12 +56652,12 @@ uaix_static size_t impl_norm_to_decompose(type_codept c, it_out_utf32 dst)
         {
             size_t number = stages_decomp_nfd_number(offset);
             for (size_t i = 0; i < number; ++i)
-                *dst++ = stages_decomp_nfd_cp(offset, i);
+                *dst++ = (type_char32)stages_decomp_nfd_cp(offset, i);
 
             return number;
         }
 
-        *dst = c;
+        *dst = (type_char32)c;
     }
     else
         *dst = 0xFFFD;
@@ -56035,12 +56684,12 @@ uaix_static size_t impl_norm_to_decompose_compat(type_codept c, it_out_utf32 dst
         {
             size_t number = stages_decomp_nfkd_number(offset);
             for (size_t i = 0; i < number; ++i)
-                *dst++ = stages_decomp_nfkd_cp(offset, i);
+                *dst++ = (type_char32)stages_decomp_nfkd_cp(offset, i);
 
             return number;
         }
 
-        *dst = c;
+        *dst = (type_char32)c;
     }
     else
         *dst = 0xFFFD;
@@ -56055,366 +56704,15 @@ UNI_ALGO_IMPL_NAMESPACE_END
 //!#include "internal_undefs.h"
 
 
-// AMALGAMATION: uni_algo/impl/impl_locale.h
-
-
-//!#include "internal_defines.h"
-
-UNI_ALGO_IMPL_NAMESPACE_BEGIN
-
-// TODO:
-// Everything related to locales is a mess in Unicode so what is the best approach is still a question.
-// For now this file contains only conversion functions that store locale subtags in type_codept
-// See Unicode Technical Standard #35 for all things that ICU supports in locale tags
-// but we definitely don't want most of those things and want to KISS and follow BCP47.
-
-// https://www.rfc-editor.org/rfc/bcp/bcp47.txt
-// https://en.wikipedia.org/wiki/Script_(Unicode)
-// https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes
-// https://en.wikipedia.org/wiki/ISO_15924
-// https://en.wikipedia.org/wiki/ISO_3166-1
-// https://en.wikipedia.org/wiki/UN_M49
-// https://en.wikipedia.org/wiki/ISO_4217
-// https://www.unicode.org/reports/tr35/#Unknown_or_Invalid_Identifiers
-
-uaix_const type_codept impl_locale_language_und = 0x756E6400; // ISO 639-1 / BCP47 (Undetermined) primary language
-uaix_const type_codept impl_locale_script_Zzzz  = 0x5A7A7A7A; // ISO 15924
-uaix_const type_codept impl_locale_region_ZZ    = 0x5A5A0000; // ISO 3166-1 alpha-2
-//uaix_const type_codept impl_locale_region_ZZZ   = 0x5A5A5A00; // ISO 3166-1 alpha-3
-//uaix_const type_codept impl_locale_region_999   = 0x39393900; // ISO 3166-1 numeric (UN M.49)
-//uaix_const type_codept impl_locale_currency_XXX = 0x58585800; // ISO 4217
-
-// TODO: Remove this ugly hack when constexpr low-level will be done
-#ifdef __cplusplus
-#undef uaix_static
-#define uaix_static constexpr
-#undef uaix_inline
-#define uaix_inline constexpr
-#endif
-
-#ifdef __cplusplus
-template <typename it_in_utf8>
-#endif
-uaix_static type_codept impl_locate_from_tag(it_in_utf8 s, size_t size)
-{
-    if (size == 1)
-        return ((s[0] & 0xFF) << 24);
-    if (size == 2)
-        return ((s[0] & 0xFF) << 24) | ((s[1] & 0xFF) << 16);
-    if (size == 3)
-        return ((s[0] & 0xFF) << 24) | ((s[1] & 0xFF) << 16) | ((s[2] & 0xFF) << 8);
-    if (size == 4)
-        return ((s[0] & 0xFF) << 24) | ((s[1] & 0xFF) << 16) | ((s[2] & 0xFF) << 8) | (s[3] & 0xFF);
-
-    return 0;
-}
-
-#ifdef __cplusplus
-template <typename it_out_utf8>
-#endif
-uaix_static size_t impl_locate_to_tag(type_codept v, it_out_utf8 s)
-{
-    size_t size = 0;
-
-    if ((v >> 24) & 0xFF)
-        s[size++] = (type_char8)((v >> 24) & 0xFF);
-    if ((v >> 16) & 0xFF)
-        s[size++] = (type_char8)((v >> 16) & 0xFF);
-    if ((v >> 8) & 0xFF)
-        s[size++] = (type_char8)((v >> 8) & 0xFF);
-    if (v & 0xFF)
-        s[size++] = (type_char8)(v & 0xFF);
-
-    return size;
-}
-
-#ifdef __cplusplus
-template <typename it_in_utf8>
-#endif
-uaix_static type_codept impl_locale_from_language(it_in_utf8 s, size_t size, type_codept unknown)
-{
-    // EXAMPLE: en/und (shortest ISO 639 code)
-    type_codept result = 0;
-
-    if (size != 2 && size != 3)
-        return unknown;
-
-    if (s[0] >= 'A' && s[0] <= 'Z')
-        result |= (((s[0] ^ 32) & 0xFF) << 24);
-    else if (s[0] >= 'a' && s[0] <= 'z')
-        result |= ((s[0] & 0xFF) << 24);
-    else
-        return unknown;
-
-    if (s[1] >= 'A' && s[1] <= 'Z')
-        result |= (((s[1] ^ 32) & 0xFF) << 16);
-    else if (s[1] >= 'a' && s[1] <= 'z')
-        result |= ((s[1] & 0xFF) << 16);
-    else
-        return unknown;
-
-    if (size == 3)
-    {
-        if (s[2] >= 'A' && s[2] <= 'Z')
-            result |= (((s[2] ^ 32) & 0xFF) << 8);
-        else if (s[2] >= 'a' && s[2] <= 'z')
-            result |= ((s[2] & 0xFF) << 8);
-        else
-            return unknown;
-    }
-
-    return result;
-}
-
-#ifdef __cplusplus
-template <typename it_in_utf8>
-#endif
-uaix_static type_codept impl_locale_from_script(it_in_utf8 s, size_t size, type_codept unknown)
-{
-    // EXAMPLE: Zzzz (ISO 15924 code)
-    type_codept result = 0;
-
-    if (size != 4)
-        return unknown;
-
-    if (s[0] >= 'A' && s[0] <= 'Z')
-        result |= ((s[0] & 0xFF) << 24);
-    else if (s[0] >= 'a' && s[0] <= 'z')
-        result |= (((s[0] ^ 32) & 0xFF) << 24);
-    else
-        return unknown;
-
-    if (s[1] >= 'A' && s[1] <= 'Z')
-        result |= (((s[1] ^ 32) & 0xFF) << 16);
-    else if (s[1] >= 'a' && s[1] <= 'z')
-        result |= ((s[1] & 0xFF) << 16);
-    else
-        return unknown;
-
-    if (s[2] >= 'A' && s[2] <= 'Z')
-        result |= (((s[2] ^ 32) & 0xFF) << 8);
-    else if (s[2] >= 'a' && s[2] <= 'z')
-        result |= ((s[2] & 0xFF) << 8);
-    else
-        return unknown;
-
-    if (s[3] >= 'A' && s[3] <= 'Z')
-        result |= ((s[3] ^ 32) & 0xFF);
-    else if (s[3] >= 'a' && s[3] <= 'z')
-        result |= (s[3] & 0xFF);
-    else
-        return unknown;
-
-    return result;
-}
-
-#ifdef __cplusplus
-template <typename it_in_utf8>
-#endif
-uaix_static type_codept impl_locale_from_region(it_in_utf8 s, size_t size, type_codept unknown)
-{
-    // NOTE: Even though it's possible to use numeric codes for script subtag too
-    // it's not handled there because BCP47 allows numeric codes for region subtag only.
-
-    // EXAMPLE: 999 (UN M.49 code)
-    if (size == 3)
-    {
-        if (s[0] >= '0' && s[0] <= '9' &&
-            s[1] >= '0' && s[1] <= '9' &&
-            s[2] >= '0' && s[2] <= '9')
-            return ((s[0] & 0xFF) << 24) | ((s[1] & 0xFF) << 16) | ((s[2] & 0xFF) << 8);
-            // return ((s[0] - 48) * 100) + ((s[1] - 48) * 10) + (s[2] - 48); // REMINDER: Numeric result
-
-        return unknown;
-    }
-
-    // EXAMPLE: ZZ (ISO 3166-1 code)
-    type_codept result = 0;
-
-    if (size != 2)
-        return unknown;
-
-    if (s[0] >= 'A' && s[0] <= 'Z')
-        result |= ((s[0] & 0xFF) << 24);
-    else if (s[0] >= 'a' && s[0] <= 'z')
-        result |= (((s[0] ^ 32) & 0xFF) << 24);
-    else
-        return unknown;
-
-    if (s[1] >= 'A' && s[1] <= 'Z')
-        result |= ((s[1] & 0xFF) << 16);
-    else if (s[1] >= 'a' && s[1] <= 'z')
-        result |= (((s[1] ^ 32) & 0xFF) << 16);
-    else
-        return unknown;
-
-    return result;
-}
-
-#ifdef UNI_ALGO_EXPERIMENTAL
-
-uaix_inline type_codept impl_locale_norm_language(type_codept v, type_codept unknown)
-{
-    // EXAMPLE: en/und (shortest ISO 639 code)
-    type_codept result = 0;
-
-    if (((v >> 24) & 0xFF) >= 'A' && ((v >> 24) & 0xFF) <= 'Z')
-        result |= ((((v >> 24) & 0xFF) ^ 32) << 24);
-    else if (((v >> 24) & 0xFF) >= 'a' && ((v >> 24) & 0xFF) <= 'z')
-        result |= (((v >> 24) & 0xFF) << 24);
-    else
-        return unknown;
-
-    if (((v >> 16) & 0xFF) >= 'A' && ((v >> 16) & 0xFF) <= 'Z')
-        result |= ((((v >> 16) & 0xFF) ^ 32) << 16);
-    else if (((v >> 16) & 0xFF) >= 'a' && ((v >> 16) & 0xFF) <= 'z')
-        result |= (((v >> 16) & 0xFF) << 16);
-    else
-        return unknown;
-
-    if (((v >> 8) & 0xFF) == 0)
-        return result;
-
-    if (((v >> 8) & 0xFF) >= 'A' && ((v >> 8) & 0xFF) <= 'Z')
-        result |= ((((v >> 8) & 0xFF) ^ 32) << 8);
-    else if (((v >> 8) & 0xFF) >= 'a' && ((v >> 8) & 0xFF) <= 'z')
-        result |= (((v >> 8) & 0xFF) << 8);
-    else
-        return unknown;
-
-    if ((v & 0xFF) != 0)
-        return unknown;
-
-    return result;
-}
-
-uaix_inline type_codept impl_locale_norm_script(type_codept v, type_codept unknown)
-{
-    // EXAMPLE: Zzzz (ISO 15924 code)
-    type_codept result = 0;
-
-    if (((v >> 24) & 0xFF) >= 'A' && ((v >> 24) & 0xFF) <= 'Z')
-        result |= (((v >> 24) & 0xFF) << 24);
-    else if (((v >> 24) & 0xFF) >= 'a' && ((v >> 24) & 0xFF) <= 'z')
-        result |= ((((v >> 24) & 0xFF) ^ 32) << 24);
-    else
-        return unknown;
-
-    if (((v >> 16) & 0xFF) >= 'A' && ((v >> 16) & 0xFF) <= 'Z')
-        result |= ((((v >> 16) & 0xFF) ^ 32) << 16);
-    else if (((v >> 16) & 0xFF) >= 'a' && ((v >> 16) & 0xFF) <= 'z')
-        result |= (((v >> 16) & 0xFF) << 16);
-    else
-        return unknown;
-
-    if (((v >> 8) & 0xFF) >= 'A' && ((v >> 8) & 0xFF) <= 'Z')
-        result |= ((((v >> 8) & 0xFF) ^ 32) << 8);
-    else if (((v >> 8) & 0xFF) >= 'a' && ((v >> 8) & 0xFF) <= 'z')
-        result |= (((v >> 8) & 0xFF) << 8);
-    else
-        return unknown;
-
-    if ((v & 0xFF) >= 'A' && (v & 0xFF) <= 'Z')
-        result |= ((v & 0xFF) ^ 32);
-    else if ((v & 0xFF) >= 'a' && (v & 0xFF) <= 'z')
-        result |= (v & 0xFF);
-    else
-        return unknown;
-
-    return result;
-}
-
-uaix_inline type_codept impl_locale_norm_region(type_codept v, type_codept unknown)
-{
-    // EXAMPLE: 999 (UN M.49 code)
-    if (((v >> 24) & 0xFF) >= '0' && ((v >> 24) & 0xFF) <= '9' &&
-        ((v >> 16) & 0xFF) >= '0' && ((v >> 16) & 0xFF) <= '9' &&
-        ((v >> 8)  & 0xFF) >= '0' && ((v >> 8)  & 0xFF) <= '9' && (v & 0xFF) == 0)
-        return (((v >> 24) & 0xFF) << 24) | (((v >> 16) & 0xFF) << 16) | (((v >> 8) & 0xFF) << 8);
-
-    // EXAMPLE: ZZ (ISO 3166-1 code)
-    type_codept result = 0;
-
-    if (((v >> 24) & 0xFF) >= 'A' && ((v >> 24) & 0xFF) <= 'Z')
-        result |= (((v >> 24) & 0xFF) << 24);
-    else if (((v >> 24) & 0xFF) >= 'a' && ((v >> 24) & 0xFF) <= 'z')
-        result |= ((((v >> 24) & 0xFF) ^ 32) << 24);
-    else
-        return unknown;
-
-    if (((v >> 16) & 0xFF) >= 'A' && ((v >> 16) & 0xFF) <= 'Z')
-        result |= (((v >> 16) & 0xFF) << 16);
-    else if (((v >> 16) & 0xFF) >= 'a' && ((v >> 16) & 0xFF) <= 'z')
-        result |= ((((v >> 16) & 0xFF) ^ 32) << 16);
-    else
-        return unknown;
-
-    if (((v >> 8) & 0xFF) != 0)
-        return unknown;
-    if ((v & 0xFF) != 0)
-        return unknown;
-
-    return result;
-}
-
-#endif // UNI_ALGO_EXPERIMENTAL
-
-#if 0
-uaix_inline type_codept impl_locale_script_to_stage(type_codept v)
-{
-    // REMINDER:
-    // x ^ 64 == x - 'A' + 1 (when x >= 'A' && x <= 'Z')
-    // x ^ 96 == x - 'a' + 1 (when x >= 'z' && x <= 'z')
-    // so x fit 5 bits and xxxx = 20 bits and max value is 0xFFFFFF
-
-    // A compiler optimizes this function to around 40 instructions
-    // it is possible to write it better.
-
-    // For example it can be used to get script properties from
-    // cldr/common/properties/scriptMetadata.txt
-    // using two-stage table O(n) approach
-    // but binary search O(log n) probably be better for such particular case.
-
-    type_codept result = 0;
-
-    if (((v >> 24) & 0xFF) >= 'A' && ((v >> 24) & 0xFF) <= 'Z')
-        result |= ((((v >> 24) & 0xFF) ^ 64) << 15);
-    else
-        return 0;
-
-    if (((v >> 16) & 0xFF) >= 'a' && ((v >> 16) & 0xFF) <= 'z')
-        result |= ((((v >> 16) & 0xFF) ^ 96) << 10);
-    else
-        return 0;
-
-    if (((v >> 8) & 0xFF) >= 'a' && ((v >> 8) & 0xFF) <= 'z')
-        result |= ((((v >> 8) & 0xFF) ^ 96) << 5);
-    else
-        return 0;
-
-    if ((v & 0xFF) >= 'a' && (v & 0xFF) <= 'z')
-        result |= ((v & 0xFF) ^ 96);
-    else
-        return 0;
-
-    return result;
-}
-#endif // 0
-
-UNI_ALGO_IMPL_NAMESPACE_END
-
-//!#include "internal_undefs.h"
-
-
 // AMALGAMATION: uni_algo/impl/internal_undefs.h
 
 /* Unicode Algorithms Implementation by Marl Gigical.
  * License: Public Domain or MIT - sign whatever you want.
  * See LICENSE.txt */
 
-// Warning! This file must never be used by a wrapper.
+// IMPORTANT: This file must never be used by a wrapper
 
-// Internal undefs, must be used together with impl_defines.h
+// Internal undefs, must be used together with internal_defines.h
 
 #undef uaix_always_inline
 #undef uaix_always_inline_tmpl
@@ -56424,6 +56722,11 @@ UNI_ALGO_IMPL_NAMESPACE_END
 #undef uaix_inline
 #undef uaix_const
 #undef uaix_const_data
+#undef uaix_array
+#undef uaix_array2
+#undef uaix_array_brace_ellison
+#undef uaix_data_array
+#undef uaix_data_array2
 
 #ifdef __cplusplus
 #  if defined(__GNUC__) || defined(__clang__)
@@ -56437,7 +56740,7 @@ UNI_ALGO_IMPL_NAMESPACE_END
 //!#include "impl/impl_cpp_lib_version.h"
 //!#include "impl/impl_unicode_version.h"
 
-namespace uni::version {
+namespace una::version {
 namespace library {
     inline constexpr int patch = (UNI_ALGO_CPP_LIB_VERSION % 1000);
     inline constexpr int minor = (UNI_ALGO_CPP_LIB_VERSION / 1000 % 1000);
@@ -56453,46 +56756,75 @@ namespace unicode {
 // AMALGAMATION: uni_algo/internal/error.h
 
 
-#include <type_traits>
 #include <cassert>
 
 //!#include "../config.h"
 
-namespace uni {
+namespace una {
 
 class error
 {
 public:
-    error() noexcept = default;
-    error(bool f, std::size_t p) noexcept : fail(f), position(p) {}
-    explicit operator bool() const noexcept { return fail; }
-    void reset() noexcept { fail = false; position = detail::impl_npos; }
-    bool has_pos() const noexcept { return position != detail::impl_npos; }
-    std::size_t pos() const noexcept { assert(fail); assert(has_pos()); return position; }
+    constexpr error() noexcept = default;
+    constexpr error(bool f, std::size_t p) noexcept : fail(f), position(p) {}
+    constexpr explicit operator bool() const noexcept { return fail; }
+    constexpr void reset() noexcept { fail = false; position = detail::impl_npos; }
+    constexpr bool has_pos() const noexcept { return position != detail::impl_npos; }
+    constexpr std::size_t pos() const noexcept { assert(fail); assert(has_pos()); return position; }
 private:
     bool fail = false;
     std::size_t position = detail::impl_npos;
 };
 
-} // namespace uni
+} // namespace una
+
+
+// AMALGAMATION: uni_algo/internal/search.h
+
+
+#include <cassert>
+
+//!#include "../config.h"
+
+namespace una {
+
+class search
+{
+public:
+    constexpr search() noexcept = default;
+    constexpr explicit search(bool f, std::size_t p, std::size_t e) noexcept
+        : found(f), position(p), end_position(e) {}
+    constexpr explicit operator bool() const noexcept { return found; }
+    constexpr void reset() { found = false; position = detail::impl_npos; end_position = detail::impl_npos; }
+    constexpr std::size_t pos() const noexcept { assert(found); return position; }
+    constexpr std::size_t end_pos() const noexcept { assert(found); return end_position; }
+private:
+    bool found = false;
+    std::size_t position = detail::impl_npos;
+    std::size_t end_position = detail::impl_npos;
+};
+
+} // namespace una
 
 
 // AMALGAMATION: uni_algo/internal/ranges_core.h
 
 
-// In Clang std::ranges implementation is still partial and doesn't work properly
-// so always force our own implementation of ranges in Clang.
+// In Clang with libstdc++ std::ranges implementation doesn't work properly
+// but it defines __cpp_lib_ranges so always force our own implementation of ranges in this case.
+// Works fine when Clang with libc++ or MSVC STL (TODO: Not sure about MSVC STL need to test)
 // TODO: maybe move the define to config later so it will be easier to test in other compilers too
-#ifdef __clang__
+#if defined(__clang__) && defined(__GLIBCXX__)
 #  ifndef UNI_ALGO_FORCE_CPP17_RANGES
-#    define UNI_ALGO_FORCE_CPP17_RANGES
+#  define UNI_ALGO_FORCE_CPP17_RANGES
 #  endif
 #endif
 
 #include <type_traits>
 #include <iterator>
+#include <utility> // std::forward
+#include <memory> // std::addressof
 #include <cassert>
-#include <memory>
 #if defined(__cpp_lib_ranges) && !defined(UNI_ALGO_FORCE_CPP17_RANGES)
 #include <ranges>
 #else
@@ -56505,15 +56837,15 @@ private:
 //!#include "../config.h"
 //!#include "../version.h"
 
-namespace uni {
+namespace una {
 
 struct sentinel_t {};
 inline constexpr sentinel_t sentinel;
 
 namespace detail::rng {
 
-// We need to use public std::ranges::view_base for compatibility with std::ranges
-// when a std::view on the right side of operator|
+// Inheritance from std::ranges::view_base must be used for compatibility
+// with std::ranges  when a std::view on the right side of operator|
 // https://tristanbrindle.com/posts/rvalue-ranges-and-views
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
 struct view_base {};
@@ -56553,6 +56885,8 @@ using range_value_t = iter_value_t<iterator_t<Range>>; // std::ranges::range_val
 template<class Iter>
 using iter_tag = typename std::iterator_traits<Iter>::iterator_category;
 #else
+// Bidirectional as highest should be good enough for all use cases in Unicode
+// Commented code below is an example of random access as highest
 template<class Iter>
 using iter_tag = typename std::conditional_t<std::bidirectional_iterator<Iter>,
     std::bidirectional_iterator_tag, std::conditional_t<std::forward_iterator<Iter>,
@@ -56583,6 +56917,7 @@ template <typename T>
 struct has_member_data<T, std::void_t<decltype(std::data(std::declval<T&>()))>> : std::true_type {};
 
 // "is" helpers
+
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
 template<class Iter>
 using is_iter_bidi_or_better = std::conditional_t<
@@ -56599,16 +56934,17 @@ using is_range_contiguous = std::conditional_t<std::ranges::contiguous_range<Ran
 
 // In C++17 std::string_view doesn't have iterators pair constructor
 // so we use this a bit ugly approach to make it work. It is only used in break ranges.
+// This helper function requeries contiguous range, but no checks here must be checked where used.
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
 template<class StringViewResult, class Range, class Iter>
-StringViewResult to_string_view(const Range& range, Iter it_begin, Iter it_pos)
+constexpr StringViewResult to_string_view(const Range& range, Iter it_begin, Iter it_pos)
 {
     return StringViewResult{std::data(range) + (it_begin - std::begin(range)),
                             static_cast<std::size_t>(it_pos - it_begin)};
 }
 #else
 template<class StringViewResult, class Range, class Iter>
-StringViewResult to_string_view(const Range&, Iter it_begin, Iter it_pos)
+constexpr StringViewResult to_string_view(const Range&, Iter it_begin, Iter it_pos)
 {
     return StringViewResult{it_begin, it_pos};
 }
@@ -56618,7 +56954,7 @@ StringViewResult to_string_view(const Range&, Iter it_begin, Iter it_pos)
 
 namespace ranges {
 
-// For C++17 we implement very simple ref_view that will be used together with uni::views::all_t/uni::views::all
+// For C++17 we implement very simple ref_view that will be used together with una::views::all_t/una::views::all
 // It has the similar design as std::views::ref_view so in C++20 we just use that
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
 template<class Range>
@@ -56641,13 +56977,13 @@ template<class R>
 using ref_view = std::ranges::ref_view<R>;
 #endif
 
-// std::owning_view is available in C++20 starting with __cpp_lib_ranges > 202106L
+// std::owning_view is available in C++20 starting with __cpp_lib_ranges >= 202110L
 // but we still enable our owning_view only in C++17 so in C++20 inside all view sometimes
 // std::owning_view will be used and sometimes std::ranges::subrange it shouldn't create any problems.
 // C++ Commitee just thought it is a good idea to add std::ranges that is still WIP to C++20
 // for God sake just make them experimental or something in C++20 and add them to C++23.
 // Now I'm forced to deal with that crap. Thank you so much bros much appreciate it.
-#if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES) || __cpp_lib_ranges > 202106L
+#if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES) || (__cpp_lib_ranges >= 202110L)
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
 // https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2021/p2415r2.html
 template<class Range>
@@ -56670,8 +57006,8 @@ public:
     uaiw_constexpr owning_view& operator=(const owning_view&) = default;
     uaiw_constexpr auto begin() { return std::begin(range); }
     uaiw_constexpr auto end() { return std::end(range); }
-    //uaiw_constexpr auto begin() const { return ranges::begin(range); }
-    //uaiw_constexpr auto end() const { return ranges::end(range); }
+    uaiw_constexpr auto begin() const { return std::begin(range); }
+    uaiw_constexpr auto end() const { return std::end(range); }
     template<class T = void, class = std::enable_if_t<detail::rng::has_member_data<Range>::value, T>>
     uaiw_constexpr auto data() { return std::data(range); }
     template<class T = void, class = std::enable_if_t<detail::rng::has_member_data<Range>::value, T>>
@@ -56698,9 +57034,9 @@ namespace detail::rng {
 // https://stackoverflow.com/questions/71689137/what-is-the-best-way-to-drop-last-element-using-c20-ranges
 // https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2021/p2387r3.html
 // Our adaptors support this:
-// auto range = str | uni::views::utf8 | uni::views::filter(f)
+// auto range = str | una::views::utf8 | una::views::filter(f)
 // But do not support this:
-// auto range = uni::views::utf8 | uni::views::filter(f)
+// auto range = una::views::utf8 | una::views::filter(f)
 
 /* ALL_VIEW */
 
@@ -56763,7 +57099,7 @@ using all_t = std::views::all_t<Range>;
 
 namespace views = ranges::views;
 
-} // namespace uni
+} // namespace una
 
 
 // AMALGAMATION: uni_algo/internal/ranges_translit.h
@@ -56775,7 +57111,7 @@ namespace views = ranges::views;
 
 //!#include "ranges_core.h"
 
-namespace uni {
+namespace una {
 
 namespace detail::translit {
 
@@ -57011,7 +57347,7 @@ private:
         detail::translit::buffer data;
         std::size_t skip = 1;
 
-        void iter_func_translit()
+        uaiw_constexpr void iter_func_translit()
         {
             do
             {
@@ -57063,10 +57399,10 @@ private:
         }
         friend uaiw_constexpr bool operator==(const translit& x, const translit& y) { return x.stream_end == y.stream_end; }
         friend uaiw_constexpr bool operator!=(const translit& x, const translit& y) { return x.stream_end != y.stream_end; }
-        friend uaiw_constexpr bool operator==(const translit& x, uni::sentinel_t) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(const translit& x, uni::sentinel_t) { return !x.stream_end; }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const translit& x) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const translit& x) { return !x.stream_end; }
+        friend uaiw_constexpr bool operator==(const translit& x, una::sentinel_t) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(const translit& x, una::sentinel_t) { return !x.stream_end; }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const translit& x) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const translit& x) { return !x.stream_end; }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -57096,7 +57432,7 @@ public:
     }
     uaiw_constexpr auto end()
     {
-        return uni::sentinel;
+        return una::sentinel;
     }
 };
 
@@ -57105,277 +57441,2971 @@ translit_view(Range&&, Func, std::size_t) -> translit_view<views::all_t<Range>, 
 
 } // namespace detail::rng
 
-} // namespace uni
+} // namespace una
+
+
+// AMALGAMATION: uni_algo/conv.h
+
+
+#include <string>
+#include <string_view>
+#include <cassert>
+
+//!#include "config.h"
+//!#include "version.h"
+//!#include "internal/safe_layer.h"
+//!#include "internal/error.h"
+
+//!#include "impl/impl_conv.h"
+
+namespace una {
+
+namespace detail {
+
+// Implementation details
+// There were 2 possible ways to implement the conversion: using resize or using back_inserter,
+// back_inserter was always 10-30% slower in tests even with reserve so it uses resize approach.
+// Also it doesn't use 2-pass approach: calculate converted string size and then the actual conversion.
+// This is obviously at least 50% slower, so it uses 1-pass with shrink_to_fit after.
+
+template<typename Dst, typename Alloc, typename Src, size_t SizeX,
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    size_t(*FnUTF)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator, size_t*)>
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    size_t(*FnUTF)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer, size_t*)>
+#else // Safe layer
+    size_t(*FnUTF)(safe::in<typename Src::const_pointer>, safe::end<typename Src::const_pointer>, safe::out<typename Dst::pointer>, size_t*)>
+#endif
+uaiw_constexpr Dst t_utf(const Alloc& alloc, const Src& src)
+{
+    Dst dst{alloc};
+
+    std::size_t length = src.size();
+
+    if (length)
+    {
+        if (length > dst.max_size() / SizeX) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
+#else
+            std::abort();
+#endif
+        }
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+        dst.resize(length * SizeX);
+        dst.resize(FnUTF(src.cbegin(), src.cend(), dst.begin(), nullptr));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+        dst.resize(length * SizeX);
+        dst.resize(FnUTF(src.data(), src.data() + src.size(), dst.data(), nullptr));
+#else // Safe layer
+#  if !defined(__cpp_lib_string_resize_and_overwrite)
+        dst.resize(length * SizeX);
+        dst.resize(FnUTF(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{dst.data(), dst.size()}, nullptr));
+#  else
+        dst.resize_and_overwrite(length * SizeX, [&src](Dst::pointer p, std::size_t n) noexcept -> std::size_t {
+            return FnUTF(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{p, n}, nullptr);
+        });
+#  endif
+#endif
+
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
+#endif
+    }
+
+    return dst;
+}
+
+template<typename Dst, typename Alloc, typename Src, size_t SizeX,
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    size_t(*FnUTF)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator, size_t*)>
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    size_t(*FnUTF)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer, size_t*)>
+#else // Safe layer
+    size_t(*FnUTF)(safe::in<typename Src::const_pointer>, safe::end<typename Src::const_pointer>, safe::out<typename Dst::pointer>, size_t*)>
+#endif
+uaiw_constexpr Dst t_utf(const Alloc& alloc, const Src& src, una::error& error)
+{
+    error.reset();
+
+    Dst dst{alloc};
+
+    std::size_t length = src.size();
+
+    if (length)
+    {
+        if (length > dst.max_size() / SizeX) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
+#else
+            std::abort();
+#endif
+        }
+
+        std::size_t err = impl_npos;
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+        dst.resize(length * SizeX);
+        std::size_t size = FnUTF(src.cbegin(), src.cend(), dst.begin(), &err);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+        dst.resize(length * SizeX);
+        std::size_t size = FnUTF(src.data(), src.data() + src.size(), dst.data(), &err);
+#else // Safe layer
+#  if !defined(__cpp_lib_string_resize_and_overwrite)
+        dst.resize(length * SizeX);
+        std::size_t size = FnUTF(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{dst.data(), dst.size()}, &err);
+#  else
+        std::size_t size = 0;
+        dst.resize_and_overwrite(length * SizeX, [&src, &size, &err](Dst::pointer p, std::size_t n) noexcept -> std::size_t {
+            size = FnUTF(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{p, n}, &err);
+            return size;
+        });
+#  endif
+#endif
+        if (err == impl_npos)
+            dst.resize(size);
+        else
+        {
+            dst.clear();
+            error = una::error{true, err};
+        }
+
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
+#endif
+    }
+
+    return dst;
+}
+
+} // namespace detail
+
+// Template functions
+
+template<typename UTF8, typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+utf8to16(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_utf8to16, detail::impl_utf8to16>(alloc, source);
+}
+template<typename UTF16, typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+utf16to8(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_utf16to8, detail::impl_utf16to8>(alloc, source);
+}
+template<typename UTF8, typename UTF32, typename Alloc = std::allocator<UTF32>>
+uaiw_constexpr std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
+utf8to32(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_utf8to32, detail::impl_utf8to32>(alloc, source);
+}
+template<typename UTF32, typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+utf32to8(std::basic_string_view<UTF32> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF32>,
+            detail::impl_x_utf32to8, detail::impl_utf32to8>(alloc, source);
+}
+template<typename UTF16, typename UTF32, typename Alloc = std::allocator<UTF32>>
+uaiw_constexpr std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
+utf16to32(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_utf16to32, detail::impl_utf16to32>(alloc, source);
+}
+template<typename UTF32, typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+utf32to16(std::basic_string_view<UTF32> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF32>,
+            detail::impl_x_utf32to16, detail::impl_utf32to16>(alloc, source);
+}
+
+// Short non-template functions for std::string, std::wstring, std::u16string, std::u32string
+
+inline uaiw_constexpr std::u16string utf8to16u(std::string_view source)
+{
+    return utf8to16<char, char16_t>(source);
+}
+inline uaiw_constexpr std::string utf16to8(std::u16string_view source)
+{
+    return utf16to8<char16_t, char>(source);
+}
+inline uaiw_constexpr std::u32string utf8to32u(std::string_view source)
+{
+    return utf8to32<char, char32_t>(source);
+}
+inline uaiw_constexpr std::string utf32to8(std::u32string_view source)
+{
+    return utf32to8<char32_t, char>(source);
+}
+inline uaiw_constexpr std::u32string utf16to32u(std::u16string_view source)
+{
+    return utf16to32<char16_t, char32_t>(source);
+}
+inline uaiw_constexpr std::u16string utf32to16u(std::u32string_view source)
+{
+    return utf32to16<char32_t, char16_t>(source);
+}
+
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring utf8to16(std::string_view source)
+{
+    return utf8to16<char, wchar_t>(source);
+}
+inline uaiw_constexpr std::string utf16to8(std::wstring_view source)
+{
+    return utf16to8<wchar_t, char>(source);
+}
+inline uaiw_constexpr std::u32string utf16to32u(std::wstring_view source)
+{
+    return utf16to32<wchar_t, char32_t>(source);
+}
+inline uaiw_constexpr std::wstring utf32to16(std::u32string_view source)
+{
+    return utf32to16<char32_t, wchar_t>(source);
+}
+#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
+inline uaiw_constexpr std::wstring utf8to32(std::string_view source)
+{
+    return utf8to32<char, wchar_t>(source);
+}
+inline uaiw_constexpr std::string utf32to8(std::wstring_view source)
+{
+    return utf32to8<wchar_t, char>(source);
+}
+inline uaiw_constexpr std::wstring utf16to32(std::u16string_view source)
+{
+    return utf16to32<char16_t, wchar_t>(source);
+}
+inline uaiw_constexpr std::u16string utf32to16u(std::wstring_view source)
+{
+    return utf32to16<wchar_t, char16_t>(source);
+}
+#endif // WCHAR_MAX >= 0x7FFFFFFF
+
+namespace strict {
+
+// Template functions
+
+template<typename UTF8, typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+utf8to16(std::basic_string_view<UTF8> source, una::error& error, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_utf8to16, detail::impl_utf8to16>(alloc, source, error);
+}
+template<typename UTF16, typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+utf16to8(std::basic_string_view<UTF16> source, una::error& error, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_utf16to8, detail::impl_utf16to8>(alloc, source, error);
+}
+template<typename UTF8, typename UTF32, typename Alloc = std::allocator<UTF32>>
+uaiw_constexpr std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
+utf8to32(std::basic_string_view<UTF8> source, una::error& error, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_utf8to32, detail::impl_utf8to32>(alloc, source, error);
+}
+template<typename UTF32, typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+utf32to8(std::basic_string_view<UTF32> source, una::error& error, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF32>,
+            detail::impl_x_utf32to8, detail::impl_utf32to8>(alloc, source, error);
+}
+template<typename UTF16, typename UTF32, typename Alloc = std::allocator<UTF32>>
+uaiw_constexpr std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
+utf16to32(std::basic_string_view<UTF16> source, una::error& error, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_utf16to32, detail::impl_utf16to32>(alloc, source, error);
+}
+template<typename UTF32, typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+utf32to16(std::basic_string_view<UTF32> source, una::error& error, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF32>,
+            detail::impl_x_utf32to16, detail::impl_utf32to16>(alloc, source, error);
+}
+
+// Short non-template functions for std::string, std::wstring, std::u16string, std::u32string
+
+inline uaiw_constexpr std::u16string utf8to16u(std::string_view source, una::error& error)
+{
+    return utf8to16<char, char16_t>(source, error);
+}
+inline uaiw_constexpr std::string utf16to8(std::u16string_view source, una::error& error)
+{
+    return utf16to8<char16_t, char>(source, error);
+}
+inline uaiw_constexpr std::u32string utf8to32u(std::string_view source, una::error& error)
+{
+    return utf8to32<char, char32_t>(source, error);
+}
+inline uaiw_constexpr std::string utf32to8(std::u32string_view source, una::error& error)
+{
+    return utf32to8<char32_t, char>(source, error);
+}
+inline uaiw_constexpr std::u32string utf16to32u(std::u16string_view source, una::error& error)
+{
+    return utf16to32<char16_t, char32_t>(source, error);
+}
+inline uaiw_constexpr std::u16string utf32to16u(std::u32string_view source, una::error& error)
+{
+    return utf32to16<char32_t, char16_t>(source, error);
+}
+
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring utf8to16(std::string_view source, una::error& error)
+{
+    return utf8to16<char, wchar_t>(source, error);
+}
+inline uaiw_constexpr std::string utf16to8(std::wstring_view source, una::error& error)
+{
+    return utf16to8<wchar_t, char>(source, error);
+}
+inline uaiw_constexpr std::u32string utf16to32u(std::wstring_view source, una::error& error)
+{
+    return utf16to32<wchar_t, char32_t>(source, error);
+}
+inline uaiw_constexpr std::wstring utf32to16(std::u32string_view source, una::error& error)
+{
+    return utf32to16<char32_t, wchar_t>(source, error);
+}
+#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
+inline uaiw_constexpr std::wstring utf8to32(std::string_view source, una::error& error)
+{
+    return utf8to32<char, wchar_t>(source, error);
+}
+inline uaiw_constexpr std::string utf32to8(std::wstring_view source, una::error& error)
+{
+    return utf32to8<wchar_t, char>(source, error);
+}
+inline uaiw_constexpr std::wstring utf16to32(std::u16string_view source, una::error& error)
+{
+    return utf16to32<char16_t, wchar_t>(source, error);
+}
+inline uaiw_constexpr std::u16string utf32to16u(std::wstring_view source, una::error& error)
+{
+    return utf32to16<wchar_t, char16_t>(source, error);
+}
+#endif // WCHAR_MAX >= 0x7FFFFFFF
+
+} // namespace strict
+
+template<typename UTF8>
+uaiw_constexpr bool is_valid_utf8(std::basic_string_view<UTF8> source)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_is_valid_utf8(source.cbegin(), source.cend(), nullptr);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_is_valid_utf8(source.data(), source.data() + source.size(), nullptr);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_is_valid_utf8(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}, nullptr);
+#endif
+}
+
+template<typename UTF16>
+uaiw_constexpr bool is_valid_utf16(std::basic_string_view<UTF16> source)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_is_valid_utf16(source.cbegin(), source.cend(), nullptr);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_is_valid_utf16(source.data(), source.data() + source.size(), nullptr);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_is_valid_utf16(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}, nullptr);
+#endif
+}
+
+template<typename UTF32>
+uaiw_constexpr bool is_valid_utf32(std::basic_string_view<UTF32> source)
+{
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_is_valid_utf32(source.cbegin(), source.cend(), nullptr);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_is_valid_utf32(source.data(), source.data() + source.size(), nullptr);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_is_valid_utf32(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}, nullptr);
+#endif
+}
+
+template<typename UTF8>
+uaiw_constexpr bool is_valid_utf8(std::basic_string_view<UTF8> source, una::error& error)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    size_t err = detail::impl_npos;
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    bool ret = detail::impl_is_valid_utf8(source.cbegin(), source.cend(), &err);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    bool ret = detail::impl_is_valid_utf8(source.data(), source.data() + source.size(), &err);
+#else // Safe layer
+    namespace safe = detail::safe;
+    bool ret = detail::impl_is_valid_utf8(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}, &err);
+#endif
+    error = una::error{!ret, err};
+
+    return ret;
+}
+
+template<typename UTF16>
+uaiw_constexpr bool is_valid_utf16(std::basic_string_view<UTF16> source, una::error& error)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    size_t err = detail::impl_npos;
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    bool ret = detail::impl_is_valid_utf16(source.cbegin(), source.cend(), &err);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    bool ret = detail::impl_is_valid_utf16(source.data(), source.data() + source.size(), &err);
+#else // Safe layer
+    namespace safe = detail::safe;
+    bool ret = detail::impl_is_valid_utf16(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}, &err);
+#endif
+    error = una::error{!ret, err};
+
+    return ret;
+}
+
+template<typename UTF32>
+uaiw_constexpr bool is_valid_utf32(std::basic_string_view<UTF32> source, una::error& error)
+{
+    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+
+    size_t err = detail::impl_npos;
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    bool ret = detail::impl_is_valid_utf32(source.cbegin(), source.cend(), &err);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    bool ret = detail::impl_is_valid_utf32(source.data(), source.data() + source.size(), &err);
+#else // Safe layer
+    namespace safe = detail::safe;
+    bool ret = detail::impl_is_valid_utf32(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}, &err);
+#endif
+    error = una::error{!ret, err};
+
+    return ret;
+}
+
+inline uaiw_constexpr bool is_valid_utf8(std::string_view source)
+{
+    return is_valid_utf8<char>(source);
+}
+inline uaiw_constexpr bool is_valid_utf16(std::u16string_view source)
+{
+    return is_valid_utf16<char16_t>(source);
+}
+inline uaiw_constexpr bool is_valid_utf32(std::u32string_view source)
+{
+    return is_valid_utf32<char32_t>(source);
+}
+inline uaiw_constexpr bool is_valid_utf8(std::string_view source, una::error& error)
+{
+    return is_valid_utf8<char>(source, error);
+}
+inline uaiw_constexpr bool is_valid_utf16(std::u16string_view source, una::error& error)
+{
+    return is_valid_utf16<char16_t>(source, error);
+}
+inline uaiw_constexpr bool is_valid_utf32(std::u32string_view source, una::error& error)
+{
+    return is_valid_utf32<char32_t>(source, error);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr bool is_valid_utf16(std::wstring_view source)
+{
+    return is_valid_utf16<wchar_t>(source);
+}
+inline uaiw_constexpr bool is_valid_utf16(std::wstring_view source, una::error& error)
+{
+    return is_valid_utf16<wchar_t>(source, error);
+}
+#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
+inline uaiw_constexpr bool is_valid_utf32(std::wstring_view source)
+{
+    return is_valid_utf32<wchar_t>(source);
+}
+inline uaiw_constexpr bool is_valid_utf32(std::wstring_view source, una::error& error)
+{
+    return is_valid_utf32<wchar_t>(source, error);
+}
+#endif // WCHAR_MAX >= 0x7FFFFFFF
+
+
+#ifdef __cpp_lib_char8_t
+
+inline uaiw_constexpr std::u16string utf8to16u(std::u8string_view source)
+{
+    return utf8to16<char8_t, char16_t>(source);
+}
+inline uaiw_constexpr std::u8string utf16to8u(std::u16string_view source)
+{
+    return utf16to8<char16_t, char8_t>(source);
+}
+inline uaiw_constexpr std::u32string utf8to32u(std::u8string_view source)
+{
+    return utf8to32<char8_t, char32_t>(source);
+}
+inline uaiw_constexpr std::u8string utf32to8u(std::u32string_view source)
+{
+    return utf32to8<char32_t, char8_t>(source);
+}
+
+inline uaiw_constexpr bool is_valid_utf8(std::u8string_view source)
+{
+    return is_valid_utf8<char8_t>(source);
+}
+inline uaiw_constexpr bool is_valid_utf8(std::u8string_view source, una::error& error)
+{
+    return is_valid_utf8<char8_t>(source, error);
+}
+
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring utf8to16(std::u8string_view source)
+{
+    return utf8to16<char8_t, wchar_t>(source);
+}
+inline uaiw_constexpr std::u8string utf16to8u(std::wstring_view source)
+{
+    return utf16to8<wchar_t, char8_t>(source);
+}
+#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
+inline uaiw_constexpr std::wstring utf8to32(std::u8string_view source)
+{
+    return utf8to32<char8_t, wchar_t>(source);
+}
+inline uaiw_constexpr std::u8string utf32to8u(std::wstring_view source)
+{
+    return utf32to8<wchar_t, char8_t>(source);
+}
+#endif // WCHAR_MAX >= 0x7FFFFFFF
+
+namespace strict {
+
+inline uaiw_constexpr std::u16string utf8to16u(std::u8string_view source, una::error& error)
+{
+    return utf8to16<char8_t, char16_t>(source, error);
+}
+inline uaiw_constexpr std::u8string utf16to8u(std::u16string_view source, una::error& error)
+{
+    return utf16to8<char16_t, char8_t>(source, error);
+}
+inline uaiw_constexpr std::u32string utf8to32u(std::u8string_view source, una::error& error)
+{
+    return utf8to32<char8_t, char32_t>(source, error);
+}
+inline uaiw_constexpr std::u8string utf32to8u(std::u32string_view source, una::error& error)
+{
+    return utf32to8<char32_t, char8_t>(source, error);
+}
+
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring utf8to16(std::u8string_view source, una::error& error)
+{
+    return utf8to16<char8_t, wchar_t>(source, error);
+}
+inline uaiw_constexpr std::u8string utf16to8u(std::wstring_view source, una::error& error)
+{
+    return utf16to8<wchar_t, char8_t>(source, error);
+}
+#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
+inline uaiw_constexpr std::wstring utf8to32(std::u8string_view source, una::error& error)
+{
+    return utf8to32<char8_t, wchar_t>(source, error);
+}
+inline uaiw_constexpr std::u8string utf32to8u(std::wstring_view source, una::error& error)
+{
+    return utf32to8<wchar_t, char8_t>(source, error);
+}
+#endif // WCHAR_MAX >= 0x7FFFFFFF
+
+} // namespace strict
+
+#endif // __cpp_lib_char8_t
+
+} // namespace una
+
+
+// AMALGAMATION: uni_algo/locale.h
+
+
+#include <string>
+#include <string_view>
+#include <cassert>
+
+//!#include "config.h"
+//!#include "version.h"
+
+//!#include "impl/impl_locale.h"
+
+// DESIGN:
+// Locale tags can contain too many values so using enum classes for them is no go.
+// So we use our own "enum strings" that are similar in usage:
+// una::locale::language{"en"} instead of una::locale::language::en
+// That allow us to use them with all possible language/script/region tags.
+// They are constexpr so it's possible to use them in all places
+// where enum classes can be used for example in switch case.
+
+namespace una {
+
+// Forward declaration for system locale stuff
+#ifndef UNI_ALGO_DISABLE_SYSTEM_LOCALE
+#ifndef UNI_ALGO_STATIC_DATA
+class locale;
+
+namespace detail {
+
+UNI_ALGO_DLL const una::locale& locale_system();
+#ifdef UNI_ALGO_EXPERIMENTAL
+UNI_ALGO_DLL const una::locale& locale_thread();
+UNI_ALGO_DLL void locale_thread_reinit();
+#endif // UNI_ALGO_EXPERIMENTAL
+
+} // namespace detail
+#endif // UNI_ALGO_STATIC_DATA
+#endif // UNI_ALGO_DISABLE_SYSTEM_LOCALE
+
+class locale
+{
+public:
+    class language
+    {
+        friend class locale;
+    private:
+        // Use char32_t for value because that is what low-level uses
+        char32_t value = 0;
+        constexpr explicit language(char32_t v) : value{v} {}
+        constexpr void set_value(char32_t v) { value = v; }
+        constexpr char32_t get_value() const { return value; }
+    public:
+        constexpr language() = default;
+        template <std::size_t N> // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays, hicpp-avoid-c-arrays)
+        constexpr explicit language(const char (&s)[N]) : value{detail::impl_locate_from_tag(s, N ? N - 1 : 0)} {}
+        uaiw_constexpr explicit language(std::string_view s) : value{detail::impl_locate_from_tag(s, s.size())} {}
+
+        // Enable emplicit conversion to make this class work in switch case
+        // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
+        constexpr operator char32_t() const { return value; }
+
+        friend constexpr bool operator==(const language& x, const language& y) { return x.value == y.value; }
+        friend constexpr bool operator!=(const language& x, const language& y) { return x.value != y.value; }
+
+        // Remove comparison operators because implicit conversion made them
+        friend bool operator==(const language&, char32_t) = delete;
+        friend bool operator==(char32_t, const language&) = delete;
+        friend bool operator!=(const language&, char32_t) = delete;
+        friend bool operator!=(char32_t, const language&) = delete;
+        friend bool operator<=(const language&, char32_t) = delete;
+        friend bool operator<=(char32_t, const language&) = delete;
+        friend bool operator>=(const language&, char32_t) = delete;
+        friend bool operator>=(char32_t, const language&) = delete;
+        friend bool operator<(const language&, char32_t) = delete;
+        friend bool operator<(char32_t, const language&) = delete;
+        friend bool operator>(const language&, char32_t) = delete;
+        friend bool operator>(char32_t, const language&) = delete;
+    };
+    class region
+    {
+        friend class locale;
+    private:
+        char32_t value = 0;
+        constexpr explicit region(char32_t v) : value{v} {}
+        constexpr void set_value(char32_t v) { value = v; }
+        constexpr char32_t get_value() const { return value; }
+    public:
+        constexpr region() = default;
+        template <std::size_t N> // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays, hicpp-avoid-c-arrays)
+        constexpr explicit region(const char (&s)[N]) : value{detail::impl_locate_from_tag(s, N ? N - 1 : 0)} {}
+        uaiw_constexpr explicit region(std::string_view s) : value{detail::impl_locate_from_tag(s, s.size())} {}
+        // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
+        constexpr operator char32_t() const { return value; }
+
+        friend constexpr bool operator==(const region& x, const region& y) { return x.value == y.value; }
+        friend constexpr bool operator!=(const region& x, const region& y) { return x.value != y.value; }
+
+        friend bool operator==(const region&, char32_t) = delete;
+        friend bool operator==(char32_t, const region&) = delete;
+        friend bool operator!=(const region&, char32_t) = delete;
+        friend bool operator!=(char32_t, const region&) = delete;
+        friend bool operator<=(const region&, char32_t) = delete;
+        friend bool operator<=(char32_t, const region&) = delete;
+        friend bool operator>=(const region&, char32_t) = delete;
+        friend bool operator>=(char32_t, const region&) = delete;
+        friend bool operator<(const region&, char32_t) = delete;
+        friend bool operator<(char32_t, const region&) = delete;
+        friend bool operator>(const region&, char32_t) = delete;
+        friend bool operator>(char32_t, const region&) = delete;
+    };
+    class script
+    {
+        friend class locale;
+    private:
+        char32_t value = 0;
+        constexpr explicit script(char32_t v) : value{v} {}
+        constexpr void set_value(char32_t v) { value = v; }
+        constexpr char32_t get_value() const { return value; }
+    public:
+        constexpr script() = default;
+        template <std::size_t N> // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays, hicpp-avoid-c-arrays)
+        constexpr explicit script(const char (&s)[N]) : value{detail::impl_locate_from_tag(s, N ? N - 1 : 0)} {}
+        uaiw_constexpr explicit script(std::string_view s) : value{detail::impl_locate_from_tag(s, s.size())} {}
+        // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
+        constexpr operator char32_t() const { return value; }
+
+        friend constexpr bool operator==(const script& x, const script& y) { return x.value == y.value; }
+        friend constexpr bool operator!=(const script& x, const script& y) { return x.value != y.value; }
+
+        friend bool operator==(const script&, char32_t) = delete;
+        friend bool operator==(char32_t, const script&) = delete;
+        friend bool operator!=(const script&, char32_t) = delete;
+        friend bool operator!=(char32_t, const script&) = delete;
+        friend bool operator<=(const script&, char32_t) = delete;
+        friend bool operator<=(char32_t, const script&) = delete;
+        friend bool operator>=(const script&, char32_t) = delete;
+        friend bool operator>=(char32_t, const script&) = delete;
+        friend bool operator<(const script&, char32_t) = delete;
+        friend bool operator<(char32_t, const script&) = delete;
+        friend bool operator>(const script&, char32_t) = delete;
+        friend bool operator>(char32_t, const script&) = delete;
+    };
+private:
+    language lang; //{detail::impl_locale_language_und};
+    script scpt; //{detail::impl_locale_script_Zzzz};
+    region regn; //{detail::impl_locale_region_ZZ};
+
+public:
+    constexpr locale() = default;
+    // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
+    constexpr locale(language l) : lang{l} {}
+    constexpr locale(language l, region r) : lang{l}, regn{r} {}
+    constexpr locale(language l, script s) : lang{l}, scpt{s} {}
+    constexpr locale(language l, script s, region r) : lang{l}, scpt{s}, regn{r} {}
+    constexpr language get_language() const { return lang; }
+    constexpr script get_script() const { return scpt; }
+    constexpr region get_region() const { return regn; }
+    constexpr bool is_empty() const
+    {
+        return lang.get_value() == 0 &&
+               scpt.get_value() == 0 &&
+               regn.get_value() == 0;
+    }
+#ifndef UNI_ALGO_DISABLE_SYSTEM_LOCALE
+#ifndef UNI_ALGO_STATIC_DATA
+    static locale system() { return detail::locale_system(); }
+#ifdef UNI_ALGO_EXPERIMENTAL
+    static locale thread() { return detail::locale_thread(); }
+    static void thread_reinit() { detail::locale_thread_reinit(); }
+#endif // UNI_ALGO_EXPERIMENTAL
+#endif // UNI_ALGO_STATIC_DATA
+#endif // UNI_ALGO_DISABLE_SYSTEM_LOCALE
+#ifdef UNI_ALGO_EXPERIMENTAL
+    uaiw_constexpr void normalize()
+    {
+        lang.set_value(detail::impl_locale_norm_language(lang.get_value(), 0));
+        if (lang.get_value() == 0)
+        {
+            scpt.set_value(0);
+            regn.set_value(0);
+        }
+        scpt.set_value(detail::impl_locale_norm_script(scpt.get_value(), 0));
+        regn.set_value(detail::impl_locale_norm_region(regn.get_value(), 0));
+    }
+#endif // UNI_ALGO_EXPERIMENTAL
+    uaiw_constexpr std::string to_string() const
+    {
+        std::string result;
+        result.resize(4 + 1 + 4 + 1 + 4);
+
+        std::size_t size = 0;
+
+        // REMINDER 1: Uncomment "size &&" parts to output empty string if ill-formed locale
+        // REMINDER 2: Uncomment "if (size)" parts to not prepend ill-formed locale with '-'
+        size += detail::impl_locate_to_tag(lang.get_value(), result.begin() + static_cast<std::ptrdiff_t>(size));
+        if (/*size && */scpt.get_value())
+        {
+            /*if (size) */result[size++] = '-';
+            size += detail::impl_locate_to_tag(scpt.get_value(), result.begin() + static_cast<std::ptrdiff_t>(size));
+        }
+        if (/*size && */regn.get_value())
+        {
+            /*if (size) */result[size++] = '-';
+            size += detail::impl_locate_to_tag(regn.get_value(), result.begin() + static_cast<std::ptrdiff_t>(size));
+        }
+
+        result.resize(size);
+        return result;
+    }
+private:
+    template <typename T>
+    uaiw_constexpr void parse(std::basic_string_view<T> s)
+    {
+        // Examples:
+        // en-ZZ
+        // und-ZZ
+        // en-Zzzz-ZZ
+        // und-Zzzz-ZZ
+
+        if (s.size() < 2)
+            return;
+
+        bool has_lang = false;
+        bool has_scpt = false;
+        bool has_regn = false;
+
+        bool found = false;
+        for (std::size_t i = 0, prev = 0; i <= s.size(); ++i)
+        {
+            // Be aware that i <= s.size() so we parse last char too to simplify the algo
+            // don't forget to check that
+
+            if (i == s.size() || s[i] == '-' || s[i] == '_' || s[i] == '.')
+            {
+                if (found) // Multiple -_
+                    break;
+
+                std::basic_string_view<T> x = s.substr(prev, i - prev);
+
+                //std::cout << x << '\n'; // Test
+
+                if (!has_lang)
+                {
+                    has_lang = true;
+                    if (x.size() == 2 || x.size() == 3)
+                        lang.set_value(detail::impl_locale_from_language(x, x.size(), 0));
+                    else
+                        break;
+                }
+                else if (!has_scpt && x.size() == 4)
+                {
+                    has_scpt = true;
+                    scpt.set_value(detail::impl_locale_from_script(x, x.size(), 0));
+                }
+                else if (!has_regn)
+                {
+                    has_regn = true;
+                    if (x.size() == 2 || x.size() == 3)
+                        regn.set_value(detail::impl_locale_from_region(x, x.size(), 0));
+                    break;
+                }
+
+                if (i != s.size() && s[i] == '.')
+                    break;
+
+                found = true;
+                prev = i;
+            }
+            else if (found)
+            {
+                found = false;
+                prev = i;
+            }
+        }
+    }
+public:
+    uaiw_constexpr explicit locale(std::string_view s) { parse<char>(s); }
+    uaiw_constexpr explicit locale(std::wstring_view s) { parse<wchar_t>(s); }
+
+    // NOTE: Comparison of locale objects is incorrect usage in most cases
+#ifdef UNI_ALGO_EXPERIMENTAL
+    friend constexpr bool operator==(const locale& x, const locale& y)
+    {
+        return x.lang == y.lang &&
+               x.scpt == y.scpt &&
+               x.regn == y.regn;
+    }
+    friend constexpr bool operator!=(const locale& x, const locale& y) noexcept { return !(x == y); }
+#endif // UNI_ALGO_EXPERIMENTAL
+    friend constexpr bool operator==(const language& x, const locale& y) { return x == y.lang; }
+    friend constexpr bool operator!=(const language& x, const locale& y) { return x != y.lang; }
+    friend constexpr bool operator==(const locale& x, const language& y) { return x.lang == y; }
+    friend constexpr bool operator!=(const locale& x, const language& y) { return x.lang != y; }
+    friend constexpr bool operator==(const region& x, const locale& y) { return x == y.regn; }
+    friend constexpr bool operator!=(const region& x, const locale& y) { return x != y.regn; }
+    friend constexpr bool operator==(const locale& x, const region& y) { return x.regn == y; }
+    friend constexpr bool operator!=(const locale& x, const region& y) { return x.regn != y; }
+    friend constexpr bool operator==(const script& x, const locale& y) { return x == y.scpt; }
+    friend constexpr bool operator!=(const script& x, const locale& y) { return x != y.scpt; }
+    friend constexpr bool operator==(const locale& x, const script& y) { return x.scpt == y; }
+    friend constexpr bool operator!=(const locale& x, const script& y) { return x.scpt != y; }
+};
+
+} // namespace una
+
+
+// AMALGAMATION: uni_algo/case.h
+
+
+#ifdef UNI_ALGO_DISABLE_CASE
+#error "Case module is disabled via define UNI_ALGO_DISABLE_CASE"
+#endif
+
+#include <string>
+#include <string_view>
+#include <cassert>
+
+//!#include "config.h"
+//!#include "version.h"
+//!#include "internal/safe_layer.h"
+//!#include "internal/search.h"
+
+// Clang-Tidy thinks that locale.h form C is included here
+// NOLINTNEXTLINE(modernize-deprecated-headers, hicpp-deprecated-headers)
+//!#include "locale.h"
+
+//!#include "impl/impl_case.h"
+#ifndef UNI_ALGO_DISABLE_FULL_CASE
+//!#include "impl/impl_case_locale.h"
+#endif
+
+namespace una {
+
+namespace detail {
+
+template<typename Dst, typename Alloc, typename Src, size_t SizeX,
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    size_t(*FnMap)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator, int, type_codept)>
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    size_t(*FnMap)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer, int, type_codept)>
+#else // Safe layer
+    size_t(*FnMap)(safe::in<typename Src::const_pointer>, safe::end<typename Src::const_pointer>, safe::out<typename Dst::pointer>, int, type_codept)>
+#endif
+uaiw_constexpr Dst t_map(const Alloc& alloc, const Src& src, int mode, type_codept loc = 0)
+{
+    Dst dst{alloc};
+
+    std::size_t length = src.size();
+
+    if (length)
+    {
+        if (length > dst.max_size() / SizeX) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
+#else
+            std::abort();
+#endif
+        }
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+        dst.resize(length * SizeX);
+        dst.resize(FnMap(src.cbegin(), src.cend(), dst.begin(), mode, loc));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+        dst.resize(length * SizeX);
+        dst.resize(FnMap(src.data(), src.data() + src.size(), dst.data(), mode, loc));
+#else // Safe layer
+#  if !defined(__cpp_lib_string_resize_and_overwrite)
+        dst.resize(length * SizeX);
+        dst.resize(FnMap(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{dst.data(), dst.size()}, mode, loc));
+#  else
+        dst.resize_and_overwrite(length * SizeX, [&src, mode, loc](Dst::pointer p, std::size_t n) noexcept -> std::size_t {
+            return FnMap(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{p, n}, mode, loc);
+        });
+#  endif
+#endif
+
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
+#endif
+    }
+
+    return dst;
+}
+
+} // namespace detail
+
+namespace cases {
+
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_lowercase_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
+            detail::impl_case_map_mode_lowercase);
+}
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_lowercase_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
+            detail::impl_case_map_mode_lowercase);
+}
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_uppercase_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
+            detail::impl_case_map_mode_uppercase);
+}
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_uppercase_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
+            detail::impl_case_map_mode_uppercase);
+}
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_casefold_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
+            detail::impl_case_map_mode_casefold);
+}
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_casefold_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
+            detail::impl_case_map_mode_casefold);
+}
+
+inline uaiw_constexpr std::string to_lowercase_utf8(std::string_view source)
+{
+    return to_lowercase_utf8<char>(source);
+}
+inline uaiw_constexpr std::string to_uppercase_utf8(std::string_view source)
+{
+    return to_uppercase_utf8<char>(source);
+}
+inline uaiw_constexpr std::string to_casefold_utf8(std::string_view source)
+{
+    return to_casefold_utf8<char>(source);
+}
+inline uaiw_constexpr std::u16string to_lowercase_utf16(std::u16string_view source)
+{
+    return to_lowercase_utf16<char16_t>(source);
+}
+inline uaiw_constexpr std::u16string to_uppercase_utf16(std::u16string_view source)
+{
+    return to_uppercase_utf16<char16_t>(source);
+}
+inline uaiw_constexpr std::u16string to_casefold_utf16(std::u16string_view source)
+{
+    return to_casefold_utf16<char16_t>(source);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring to_lowercase_utf16(std::wstring_view source)
+{
+    return to_lowercase_utf16<wchar_t>(source);
+}
+inline uaiw_constexpr std::wstring to_uppercase_utf16(std::wstring_view source)
+{
+    return to_uppercase_utf16<wchar_t>(source);
+}
+inline uaiw_constexpr std::wstring to_casefold_utf16(std::wstring_view source)
+{
+    return to_casefold_utf16<wchar_t>(source);
+}
+#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+
+#ifndef UNI_ALGO_DISABLE_FULL_CASE
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_lowercase_utf8(std::basic_string_view<UTF8> source, const una::locale& locale, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(alloc, source,
+            detail::impl_case_map_mode_lowercase, static_cast<char32_t>(locale.get_language()));
+}
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_lowercase_utf16(std::basic_string_view<UTF16> source, const una::locale& locale, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(alloc, source,
+            detail::impl_case_map_mode_lowercase, static_cast<char32_t>(locale.get_language()));
+}
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_uppercase_utf8(std::basic_string_view<UTF8> source, const una::locale& locale, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(alloc, source,
+            detail::impl_case_map_mode_uppercase, static_cast<char32_t>(locale.get_language()));
+}
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_uppercase_utf16(std::basic_string_view<UTF16> source, const una::locale& locale, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(alloc, source,
+            detail::impl_case_map_mode_uppercase, static_cast<char32_t>(locale.get_language()));
+}
+inline uaiw_constexpr std::string to_lowercase_utf8(std::string_view source, const una::locale& locale)
+{
+    return to_lowercase_utf8<char>(source, locale);
+}
+inline uaiw_constexpr std::string to_uppercase_utf8(std::string_view source, const una::locale& locale)
+{
+    return to_uppercase_utf8<char>(source, locale);
+}
+inline uaiw_constexpr std::u16string to_lowercase_utf16(std::u16string_view source, const una::locale& locale)
+{
+    return to_lowercase_utf16<char16_t>(source, locale);
+}
+inline uaiw_constexpr std::u16string to_uppercase_utf16(std::u16string_view source, const una::locale& locale)
+{
+    return to_uppercase_utf16<char16_t>(source, locale);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring to_lowercase_utf16(std::wstring_view source, const una::locale& locale)
+{
+    return to_lowercase_utf16<wchar_t>(source, locale);
+}
+inline uaiw_constexpr std::wstring to_uppercase_utf16(std::wstring_view source, const una::locale& locale)
+{
+    return to_uppercase_utf16<wchar_t>(source, locale);
+}
+#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+#endif // UNI_ALGO_DISABLE_FULL_CASE
+
+#ifndef UNI_ALGO_DISABLE_BREAK_WORD
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_titlecase_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
+            detail::impl_case_map_mode_titlecase);
+}
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_titlecase_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
+            detail::impl_case_map_mode_titlecase);
+}
+inline uaiw_constexpr std::string to_titlecase_utf8(std::string_view source)
+{
+    return to_titlecase_utf8<char>(source);
+}
+inline uaiw_constexpr std::u16string to_titlecase_utf16(std::u16string_view source)
+{
+    return to_titlecase_utf16<char16_t>(source);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring to_titlecase_utf16(std::wstring_view source)
+{
+    return to_titlecase_utf16<wchar_t>(source);
+}
+#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+#ifndef UNI_ALGO_DISABLE_FULL_CASE
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_titlecase_utf8(std::basic_string_view<UTF8> source, const una::locale& locale, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(alloc, source,
+            detail::impl_case_map_mode_titlecase, static_cast<char32_t>(locale.get_language()));
+}
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_titlecase_utf16(std::basic_string_view<UTF16> source, const una::locale& locale, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(alloc, source,
+            detail::impl_case_map_mode_titlecase, static_cast<char32_t>(locale.get_language()));
+}
+inline uaiw_constexpr std::string to_titlecase_utf8(std::string_view source, const una::locale& locale)
+{
+    return to_titlecase_utf8<char>(source, locale);
+}
+inline uaiw_constexpr std::u16string to_titlecase_utf16(std::u16string_view source, const una::locale& locale)
+{
+    return to_titlecase_utf16<char16_t>(source, locale);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring to_titlecase_utf16(std::wstring_view source, const una::locale& locale)
+{
+    return to_titlecase_utf16<wchar_t>(source, locale);
+}
+#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+#endif // UNI_ALGO_DISABLE_FULL_CASE
+#endif // UNI_ALGO_DISABLE_BREAK_WORD
+
+} // namespace cases
+
+namespace casesens {
+
+template<typename UTF8>
+uaiw_constexpr int compare_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_case_compare_utf8(string1.cbegin(), string1.cend(),
+                                          string2.cbegin(), string2.cend(), false);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_case_compare_utf8(string1.data(), string1.data() + string1.size(),
+                                          string2.data(), string2.data() + string2.size(), false);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_case_compare_utf8(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                          safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, false);
+#endif
+}
+
+template<typename UTF16>
+uaiw_constexpr int compare_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_case_compare_utf16(string1.cbegin(), string1.cend(),
+                                           string2.cbegin(), string2.cend(), false);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_case_compare_utf16(string1.data(), string1.data() + string1.size(),
+                                           string2.data(), string2.data() + string2.size(), false);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_case_compare_utf16(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                           safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, false);
+#endif
+}
+
+#ifndef UNI_ALGO_DISABLE_COLLATE
+template<typename UTF8>
+uaiw_constexpr int collate_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_case_collate_utf8(string1.cbegin(), string1.cend(),
+                                          string2.cbegin(), string2.cend(), false);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_case_collate_utf8(string1.data(), string1.data() + string1.size(),
+                                          string2.data(), string2.data() + string2.size(), false);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_case_collate_utf8(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                          safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, false);
+#endif
+}
+
+template<typename UTF16>
+uaiw_constexpr int collate_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_case_collate_utf16(string1.cbegin(), string1.cend(),
+                                           string2.cbegin(), string2.cend(), false);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_case_collate_utf16(string1.data(), string1.data() + string1.size(),
+                                           string2.data(), string2.data() + string2.size(), false);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_case_collate_utf16(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                           safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, false);
+#endif
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+
+template<typename UTF8>
+uaiw_constexpr una::search search_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    size_t pos = detail::impl_npos, end = detail::impl_npos;
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    bool ret = detail::impl_case_search_utf8(string1.cbegin(), string1.cend(),
+                                             string2.cbegin(), string2.cend(), false, &pos, &end);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    bool ret = detail::impl_case_search_utf8(string1.data(), string1.data() + string1.size(),
+                                             string2.data(), string2.data() + string2.size(), false, &pos, &end);
+#else // Safe layer
+    namespace safe = detail::safe;
+    bool ret = detail::impl_case_search_utf8(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                             safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, false, &pos, &end);
+#endif
+
+    return una::search{ret, pos, end};
+}
+
+template<typename UTF16>
+uaiw_constexpr una::search search_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    size_t pos = detail::impl_npos, end = detail::impl_npos;
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    bool ret = detail::impl_case_search_utf16(string1.cbegin(), string1.cend(),
+                                              string2.cbegin(), string2.cend(), false, &pos, &end);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    bool ret = detail::impl_case_search_utf16(string1.data(), string1.data() + string1.size(),
+                                              string2.data(), string2.data() + string2.size(), false, &pos, &end);
+#else // Safe layer
+    namespace safe = detail::safe;
+    bool ret = detail::impl_case_search_utf16(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                              safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, false, &pos, &end);
+#endif
+
+    return una::search{ret, pos, end};
+}
+
+inline uaiw_constexpr int compare_utf8(std::string_view string1, std::string_view string2)
+{
+    return compare_utf8<char>(string1, string2);
+}
+#ifndef UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr int collate_utf8(std::string_view string1, std::string_view string2)
+{
+    return collate_utf8<char>(string1, string2);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_utf8(std::string_view string1, std::string_view string2)
+{
+    return search_utf8<char>(string1, string2);
+}
+inline uaiw_constexpr int compare_utf16(std::u16string_view string1, std::u16string_view string2)
+{
+    return compare_utf16<char16_t>(string1, string2);
+}
+#ifndef UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr int collate_utf16(std::u16string_view string1, std::u16string_view string2)
+{
+    return collate_utf16<char16_t>(string1, string2);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_utf16(std::u16string_view string1, std::u16string_view string2)
+{
+    return search_utf16<char16_t>(string1, string2);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr int compare_utf16(std::wstring_view string1, std::wstring_view string2)
+{
+    return compare_utf16<wchar_t>(string1, string2);
+}
+#ifndef UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr int collate_utf16(std::wstring_view string1, std::wstring_view string2)
+{
+    return collate_utf16<wchar_t>(string1, string2);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_utf16(std::wstring_view string1, std::wstring_view string2)
+{
+    return search_utf16<wchar_t>(string1, string2);
+}
+#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+
+#ifdef UNI_ALGO_EXPERIMENTAL
+#ifndef UNI_ALGO_DISABLE_COLLATE
+template<typename UTF8, typename Alloc = std::allocator<char>>
+uaiw_constexpr std::basic_string<char, std::char_traits<char>, Alloc>
+sortkey_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_sortkey_utf8, detail::impl_case_sortkey_loc_utf8>(alloc, source, false);
+}
+template<typename UTF16, typename Alloc = std::allocator<char>>
+uaiw_constexpr std::basic_string<char, std::char_traits<char>, Alloc>
+sortkey_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_sortkey_utf16, detail::impl_case_sortkey_loc_utf16>(alloc, source, false);
+}
+inline uaiw_constexpr std::string sortkey_utf8(std::string_view source)
+{
+    return sortkey_utf8<char>(source);
+}
+inline uaiw_constexpr std::string sortkey_utf16(std::u16string_view source)
+{
+    return sortkey_utf16<char16_t>(source);
+}
+inline uaiw_constexpr std::string sortkey_utf16(std::wstring_view source)
+{
+    return sortkey_utf16<wchar_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+#endif // UNI_ALGO_EXPERIMENTAL
+
+} // namespace casesens
+
+namespace caseless {
+
+template<typename UTF8>
+uaiw_constexpr int compare_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_case_compare_utf8(string1.cbegin(), string1.cend(),
+                                          string2.cbegin(), string2.cend(), true);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_case_compare_utf8(string1.data(), string1.data() + string1.size(),
+                                          string2.data(), string2.data() + string2.size(), true);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_case_compare_utf8(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                          safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, true);
+#endif
+}
+
+template<typename UTF16>
+uaiw_constexpr int compare_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_case_compare_utf16(string1.cbegin(), string1.cend(),
+                                           string2.cbegin(), string2.cend(), true);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_case_compare_utf16(string1.data(), string1.data() + string1.size(),
+                                           string2.data(), string2.data() + string2.size(), true);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_case_compare_utf16(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                           safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, true);
+#endif
+}
+
+#ifndef UNI_ALGO_DISABLE_COLLATE
+template<typename UTF8>
+uaiw_constexpr int collate_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_case_collate_utf8(string1.cbegin(), string1.cend(),
+                                          string2.cbegin(), string2.cend(), true);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_case_collate_utf8(string1.data(), string1.data() + string1.size(),
+                                          string2.data(), string2.data() + string2.size(), true);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_case_collate_utf8(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                          safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, true);
+#endif
+}
+
+template<typename UTF16>
+uaiw_constexpr int collate_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_case_collate_utf16(string1.cbegin(), string1.cend(),
+                                           string2.cbegin(), string2.cend(), true);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_case_collate_utf16(string1.data(), string1.data() + string1.size(),
+                                           string2.data(), string2.data() + string2.size(), true);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_case_collate_utf16(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                           safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, true);
+#endif
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+
+template<typename UTF8>
+uaiw_constexpr una::search search_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    size_t pos = detail::impl_npos, end = detail::impl_npos;
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    bool ret = detail::impl_case_search_utf8(string1.cbegin(), string1.cend(),
+                                             string2.cbegin(), string2.cend(), true, &pos, &end);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    bool ret = detail::impl_case_search_utf8(string1.data(), string1.data() + string1.size(),
+                                             string2.data(), string2.data() + string2.size(), true, &pos, &end);
+#else // Safe layer
+    namespace safe = detail::safe;
+    bool ret = detail::impl_case_search_utf8(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                             safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, true, &pos, &end);
+#endif
+
+    return una::search{ret, pos, end};
+}
+
+template<typename UTF16>
+uaiw_constexpr una::search search_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    size_t pos = detail::impl_npos, end = detail::impl_npos;
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    bool ret = detail::impl_case_search_utf16(string1.cbegin(), string1.cend(),
+                                              string2.cbegin(), string2.cend(), true, &pos, &end);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    bool ret = detail::impl_case_search_utf16(string1.data(), string1.data() + string1.size(),
+                                              string2.data(), string2.data() + string2.size(), true, &pos, &end);
+#else // Safe layer
+    namespace safe = detail::safe;
+    bool ret = detail::impl_case_search_utf16(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                              safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, true, &pos, &end);
+#endif
+
+    return una::search{ret, pos, end};
+}
+
+inline uaiw_constexpr int compare_utf8(std::string_view string1, std::string_view string2)
+{
+    return compare_utf8<char>(string1, string2);
+}
+#ifndef UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr int collate_utf8(std::string_view string1, std::string_view string2)
+{
+    return collate_utf8<char>(string1, string2);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_utf8(std::string_view string1, std::string_view string2)
+{
+    return search_utf8<char>(string1, string2);
+}
+inline uaiw_constexpr int compare_utf16(std::u16string_view string1, std::u16string_view string2)
+{
+    return compare_utf16<char16_t>(string1, string2);
+}
+#ifndef UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr int collate_utf16(std::u16string_view string1, std::u16string_view string2)
+{
+    return collate_utf16<char16_t>(string1, string2);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_utf16(std::u16string_view string1, std::u16string_view string2)
+{
+    return search_utf16<char16_t>(string1, string2);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr int compare_utf16(std::wstring_view string1, std::wstring_view string2)
+{
+    return compare_utf16<wchar_t>(string1, string2);
+}
+#ifndef UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr int collate_utf16(std::wstring_view string1, std::wstring_view string2)
+{
+    return collate_utf16<wchar_t>(string1, string2);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_utf16(std::wstring_view string1, std::wstring_view string2)
+{
+    return search_utf16<wchar_t>(string1, string2);
+}
+#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+
+#ifdef UNI_ALGO_EXPERIMENTAL
+
+#ifndef UNI_ALGO_DISABLE_COLLATE
+template<typename UTF8, typename Alloc = std::allocator<char>>
+uaiw_constexpr std::basic_string<char, std::char_traits<char>, Alloc>
+sortkey_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_case_sortkey_utf8, detail::impl_case_sortkey_loc_utf8>(alloc, source, true);
+}
+template<typename UTF16, typename Alloc = std::allocator<char>>
+uaiw_constexpr std::basic_string<char, std::char_traits<char>, Alloc>
+sortkey_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_case_sortkey_utf16, detail::impl_case_sortkey_loc_utf16>(alloc, source, true);
+}
+inline uaiw_constexpr std::string sortkey_utf8(std::string_view source)
+{
+    return sortkey_utf8<char>(source);
+}
+inline uaiw_constexpr std::string sortkey_utf16(std::u16string_view source)
+{
+    return sortkey_utf16<char16_t>(source);
+}
+inline uaiw_constexpr std::string sortkey_utf16(std::wstring_view source)
+{
+    return sortkey_utf16<wchar_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+
+template<typename UTF8>
+uaiw_constexpr bool like_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2, char32_t escape = 0)
+{
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_case_like_utf8(string1.cbegin(), string1.cend(),
+                                       string2.cbegin(), string2.cend(), true, '%', '_', escape);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_case_like_utf8(string1.data(), string1.data() + string1.size(),
+                                       string2.data(), string2.data() + string2.size(), true, '%', '_', escape);
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_case_like_utf8(safe::in{string1.data(), string1.size()}, safe::end{string1.data() + string1.size()},
+                                       safe::in{string2.data(), string2.size()}, safe::end{string2.data() + string2.size()}, true, '%', '_', escape);
+#endif
+}
+inline uaiw_constexpr bool like_utf8(std::string_view string1, std::string_view string2, char32_t escape = 0)
+{
+    return like_utf8<char>(string1, string2, escape);
+}
+
+#endif // UNI_ALGO_EXPERIMENTAL
+
+} // namespace caseless
+
+#ifdef __cpp_lib_char8_t
+
+namespace cases {
+
+inline uaiw_constexpr std::u8string to_lowercase_utf8(std::u8string_view source)
+{
+    return to_lowercase_utf8<char8_t>(source);
+}
+inline uaiw_constexpr std::u8string to_uppercase_utf8(std::u8string_view source)
+{
+    return to_uppercase_utf8<char8_t>(source);
+}
+inline uaiw_constexpr std::u8string to_casefold_utf8(std::u8string_view source)
+{
+    return to_casefold_utf8<char8_t>(source);
+}
+inline uaiw_constexpr std::u8string to_lowercase_utf8(std::u8string_view source, const una::locale& locale)
+{
+    return to_lowercase_utf8<char8_t>(source, locale);
+}
+inline uaiw_constexpr std::u8string to_uppercase_utf8(std::u8string_view source, const una::locale& locale)
+{
+    return to_uppercase_utf8<char8_t>(source, locale);
+}
+#ifndef UNI_ALGO_DISABLE_BREAK_WORD
+#ifndef UNI_ALGO_DISABLE_FULL_CASE
+inline uaiw_constexpr std::u8string to_titlecase_utf8(std::u8string_view source)
+{
+    return to_titlecase_utf8<char8_t>(source);
+}
+inline uaiw_constexpr std::u8string to_titlecase_utf8(std::u8string_view source, const una::locale& locale)
+{
+    return to_titlecase_utf8<char8_t>(source, locale);
+}
+#endif // UNI_ALGO_DISABLE_FULL_CASE
+#endif // UNI_ALGO_DISABLE_BREAK_WORD
+
+} // namespace cases
+
+namespace casesens {
+
+inline uaiw_constexpr int compare_utf8(std::u8string_view string1, std::u8string_view string2)
+{
+    return compare_utf8<char8_t>(string1, string2);
+}
+#ifndef UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr int collate_utf8(std::u8string_view string1, std::u8string_view string2)
+{
+    return collate_utf8<char8_t>(string1, string2);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_utf8(std::u8string_view string1, std::u8string_view string2)
+{
+    return search_utf8<char8_t>(string1, string2);
+}
+
+} // namespace casesens
+
+namespace caseless {
+
+inline uaiw_constexpr int compare_utf8(std::u8string_view string1, std::u8string_view string2)
+{
+    return compare_utf8<char8_t>(string1, string2);
+}
+#ifndef UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr int collate_utf8(std::u8string_view string1, std::u8string_view string2)
+{
+    return collate_utf8<char8_t>(string1, string2);
+}
+#endif // UNI_ALGO_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_utf8(std::u8string_view string1, std::u8string_view string2)
+{
+    return search_utf8<char8_t>(string1, string2);
+}
+
+} // namespace caseless
+
+#endif // __cpp_lib_char8_t
+
+// ----------
+// PROPERTIES
+// ----------
+
+namespace codepoint {
+
+class prop_case
+{
+private:
+    detail::type_codept data = 0;
+
+public:
+    uaiw_constexpr prop_case() = delete;
+    uaiw_constexpr explicit prop_case(char32_t c) noexcept : data{detail::impl_case_get_prop(c)} {}
+
+    uaiw_constexpr bool Lowercase() const noexcept
+    {
+        // The Unicode Standard: DerivedCoreProperties.txt -> Lowercase
+        return detail::impl_case_is_lowercase_prop(data);
+    }
+    uaiw_constexpr bool Uppercase() const noexcept
+    {
+        // The Unicode Standard: DerivedCoreProperties.txt -> Uppercase
+        return detail::impl_case_is_uppercase_prop(data);
+    }
+    uaiw_constexpr bool Cased() const noexcept
+    {
+        // The Unicode Standard: DerivedCoreProperties.txt -> Cased
+        return detail::impl_case_is_cased_prop(data);
+    }
+    uaiw_constexpr bool Case_Ignorable() const noexcept
+    {
+        // The Unicode Standard: DerivedCoreProperties.txt -> Case_Ignorable
+        return detail::impl_case_is_case_ignorable_prop(data);
+    }
+    uaiw_constexpr bool Soft_Dotted() const noexcept
+    {
+        // The Unicode Standard: PropList.txt -> Soft_Dotted
+        return detail::impl_case_is_soft_dotted_prop(data);
+    }
+};
+
+inline uaiw_constexpr bool is_lowercase(char32_t c) noexcept
+{
+    return prop_case{c}.Lowercase();
+}
+
+inline uaiw_constexpr bool is_lowercase(const prop_case& p) noexcept
+{
+    return p.Lowercase();
+}
+
+inline uaiw_constexpr bool is_uppercase(char32_t c) noexcept
+{
+    return prop_case{c}.Uppercase();
+}
+
+inline uaiw_constexpr bool is_uppercase(const prop_case& p) noexcept
+{
+    return p.Uppercase();
+}
+
+inline uaiw_constexpr char32_t to_simple_lowercase(char32_t c) noexcept
+{
+    return detail::impl_case_to_simple_lowercase(c);
+}
+
+inline uaiw_constexpr char32_t to_simple_uppercase(char32_t c) noexcept
+{
+    return detail::impl_case_to_simple_uppercase(c);
+}
+
+inline uaiw_constexpr char32_t to_simple_casefold(char32_t c) noexcept
+{
+    return detail::impl_case_to_simple_casefold(c);
+}
+
+#ifndef UNI_ALGO_DISABLE_BREAK_WORD
+inline uaiw_constexpr char32_t to_simple_titlecase(char32_t c) noexcept
+{
+    return detail::impl_case_to_simple_titlecase(c);
+}
+#endif // UNI_ALGO_DISABLE_BREAK_WORD
+
+#ifndef UNI_ALGO_DISABLE_FULL_CASE
+
+inline uaiw_constexpr std::u32string to_lowercase_u32(char32_t c)
+{
+    std::u32string dst;
+    dst.resize(detail::impl_max_case_expand);
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    dst.resize(detail::impl_case_to_lowercase(c, dst.begin()));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    dst.resize(detail::impl_case_to_lowercase(c, dst.data()));
+#else // Safe layer
+    dst.resize(detail::impl_case_to_lowercase(c, detail::safe::out{dst.data(), dst.size()}));
+#endif
+    return dst;
+}
+
+inline uaiw_constexpr std::u32string to_uppercase_u32(char32_t c)
+{
+    std::u32string dst;
+    dst.resize(detail::impl_max_case_expand);
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    dst.resize(detail::impl_case_to_uppercase(c, dst.begin()));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    dst.resize(detail::impl_case_to_uppercase(c, dst.data()));
+#else // Safe layer
+    dst.resize(detail::impl_case_to_uppercase(c, detail::safe::out{dst.data(), dst.size()}));
+#endif
+    return dst;
+}
+
+inline uaiw_constexpr std::u32string to_casefold_u32(char32_t c)
+{
+    std::u32string dst;
+    dst.resize(detail::impl_max_case_expand);
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    dst.resize(detail::impl_case_to_casefold(c, dst.begin()));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    dst.resize(detail::impl_case_to_casefold(c, dst.data()));
+#else // Safe layer
+    dst.resize(detail::impl_case_to_casefold(c, detail::safe::out{dst.data(), dst.size()}));
+#endif
+    return dst;
+}
+
+#ifndef UNI_ALGO_DISABLE_BREAK_WORD
+inline uaiw_constexpr std::u32string to_titlecase_u32(char32_t c)
+{
+    std::u32string dst;
+    dst.resize(detail::impl_max_case_expand);
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    dst.resize(detail::impl_case_to_titlecase(c, dst.begin()));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    dst.resize(detail::impl_case_to_titlecase(c, dst.data()));
+#else // Safe layer
+    dst.resize(detail::impl_case_to_titlecase(c, detail::safe::out{dst.data(), dst.size()}));
+#endif
+    return dst;
+}
+#endif // UNI_ALGO_DISABLE_BREAK_WORD
+
+#endif // UNI_ALGO_DISABLE_FULL_CASE
+
+} // namespace codepoint
+
+} // namespace una
+
+
+// AMALGAMATION: uni_algo/prop.h
+
+
+#ifdef UNI_ALGO_DISABLE_PROP
+#error "Property module is disabled via define UNI_ALGO_DISABLE_PROP"
+#endif
+
+//!#include "config.h"
+//!#include "version.h"
+//!#include "internal/safe_layer.h"
+
+//!#include "impl/impl_prop.h"
+
+namespace una::codepoint {
+
+// REPLACEMENT CHARACTER U+FFFD
+inline constexpr char32_t replacement_char = detail::impl_prop_replacement_char;
+// The last possible code point U+10FFFF
+inline constexpr char32_t max_value = detail::impl_prop_max_value;
+// Total number of code points 0x110000
+inline constexpr std::size_t total_number = detail::impl_prop_total_number;
+
+enum class general_category : unsigned char {Cn = 0,
+                                             Lu,Ll,Lt,Lm,Lo,
+                                             Mn,Mc,Me,
+                                             Nd,Nl,No,
+                                             Pc,Pd,Ps,Pe,Pi,Pf,Po,
+                                             Sm,Sc,Sk,So,
+                                             Zs,Zl,Zp,
+                                             Cc,Cf,Cs,Co};
+
+class prop
+{
+    friend uaiw_constexpr general_category get_general_category(const prop& p) noexcept;
+
+private:
+    detail::type_codept data = 0;
+
+public:
+    uaiw_constexpr prop() = delete;
+    uaiw_constexpr explicit prop(char32_t c) noexcept : data{detail::impl_prop_get_prop(c)} {}
+    // TODO: We can cheat here to make the size of the class smaller because
+    // we know that low-level uses only 8-bit for this property but I'm not sure it's worth it
+    // data{static_cast<unsigned char>(detail::impl_prop_get_prop(c))}
+    // and make data unsigned char
+    // And No, I don't want to change low-level for this I want low-level always to return
+    // property data in type_codept because everything related to code point uses it there.
+    // --- Added later ---
+    // Actually it might be better to redesign the low-level for this, there are some parts
+    // of the low-level where it will make structs smaller too for example breaks.
+
+    // https://www.unicode.org/reports/tr44/#General_Category_Values
+
+    uaiw_constexpr bool General_Category_Lu() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Lu; }
+    uaiw_constexpr bool General_Category_Ll() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Ll; }
+    uaiw_constexpr bool General_Category_Lt() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Lt; }
+    uaiw_constexpr bool General_Category_Lm() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Lm; }
+    uaiw_constexpr bool General_Category_Lo() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Lo; }
+
+    uaiw_constexpr bool General_Category_Mn() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Mn; }
+    uaiw_constexpr bool General_Category_Mc() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Mc; }
+    uaiw_constexpr bool General_Category_Me() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Me; }
+
+    uaiw_constexpr bool General_Category_Nd() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Nd; }
+    uaiw_constexpr bool General_Category_Nl() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Nl; }
+    uaiw_constexpr bool General_Category_No() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_No; }
+
+    uaiw_constexpr bool General_Category_Pc() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pc; }
+    uaiw_constexpr bool General_Category_Pd() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pd; }
+    uaiw_constexpr bool General_Category_Ps() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Ps; }
+    uaiw_constexpr bool General_Category_Pe() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pe; }
+    uaiw_constexpr bool General_Category_Pi() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pi; }
+    uaiw_constexpr bool General_Category_Pf() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pf; }
+    uaiw_constexpr bool General_Category_Po() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Po; }
+
+    uaiw_constexpr bool General_Category_Sm() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Sm; }
+    uaiw_constexpr bool General_Category_Sc() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Sc; }
+    uaiw_constexpr bool General_Category_Sk() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Sk; }
+    uaiw_constexpr bool General_Category_So() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_So; }
+
+    uaiw_constexpr bool General_Category_Zs() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Zs; }
+    uaiw_constexpr bool General_Category_Zl() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Zl; }
+    uaiw_constexpr bool General_Category_Zp() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Zp; }
+
+    uaiw_constexpr bool General_Category_Cc() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Cc; }
+    uaiw_constexpr bool General_Category_Cf() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Cf; }
+    uaiw_constexpr bool General_Category_Cs() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Cs; }
+    uaiw_constexpr bool General_Category_Co() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Co; }
+    uaiw_constexpr bool General_Category_Cn() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Cn; }
+
+    uaiw_constexpr bool General_Category_LC() const noexcept
+    {
+        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
+        return gc >= detail::impl_General_Category_Lu && gc <= detail::impl_General_Category_Lt;
+    }
+    uaiw_constexpr bool General_Category_L() const noexcept
+    {
+        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
+        return gc >= detail::impl_General_Category_Lu && gc <= detail::impl_General_Category_Lo;
+    }
+    uaiw_constexpr bool General_Category_M() const noexcept
+    {
+        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
+        return gc >= detail::impl_General_Category_Mn && gc <= detail::impl_General_Category_Me;
+    }
+    uaiw_constexpr bool General_Category_N() const noexcept
+    {
+        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
+        return gc >= detail::impl_General_Category_Nd && gc <= detail::impl_General_Category_No;
+    }
+    uaiw_constexpr bool General_Category_P() const noexcept
+    {
+        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
+        return gc >= detail::impl_General_Category_Pc && gc <= detail::impl_General_Category_Po;
+    }
+    uaiw_constexpr bool General_Category_S() const noexcept
+    {
+        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
+        return gc >= detail::impl_General_Category_Sm && gc <= detail::impl_General_Category_So;
+    }
+    uaiw_constexpr bool General_Category_Z() const noexcept
+    {
+        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
+        return gc >= detail::impl_General_Category_Zs && gc <= detail::impl_General_Category_Zp;
+    }
+    uaiw_constexpr bool General_Category_C() const noexcept
+    {
+        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
+        return (gc >= detail::impl_General_Category_Cc && gc <= detail::impl_General_Category_Co) ||
+                gc == detail::impl_General_Category_Cn;
+    }
+
+    // https://www.unicode.org/glossary/#code_point_type
+    // Seven fundamental classes of code points in The Unicode Standard:
+    // Graphic, Format, Control, Private-Use, Surrogate, Noncharacter, Reserved.
+
+    uaiw_constexpr bool Noncharacter_Code_Point() const noexcept
+    {
+        // https://www.unicode.org/glossary/#noncharacter
+        return detail::impl_prop_is_noncharacter_prop(data);
+    }
+    uaiw_constexpr bool Surrogate() const noexcept
+    {
+        // https://www.unicode.org/glossary/#surrogate_code_point
+        return General_Category_Cs();
+    }
+    uaiw_constexpr bool Private_Use() const noexcept
+    {
+        // https://www.unicode.org/glossary/#private_use_code_point
+        return General_Category_Co();
+    }
+    uaiw_constexpr bool Control() const noexcept
+    {
+        // https://www.unicode.org/glossary/#control_codes
+        return General_Category_Cc();
+    }
+    uaiw_constexpr bool Graphic() const noexcept
+    {
+        // https://www.unicode.org/glossary/#graphic_character
+        return detail::impl_prop_is_graphic_prop(data);
+    }
+    uaiw_constexpr bool Format() const noexcept
+    {
+        // https://www.unicode.org/glossary/#format_character
+        return detail::impl_prop_is_format_prop(data);
+    }
+    uaiw_constexpr bool Reserved() const noexcept
+    {
+        // https://www.unicode.org/glossary/#reserved_code_point
+        return detail::impl_prop_is_reserved_prop(data);
+    }
+
+    // Other properties
+
+    uaiw_constexpr bool White_Space() const noexcept
+    {
+        // The Unicode Standard: PropList.txt -> White_Space
+        return detail::impl_prop_is_white_space_prop(data);
+    }
+    uaiw_constexpr bool Alphabetic() const noexcept
+    {
+        // The Unicode Standard: DerivedCoreProperties.txt -> Alphabetic
+        return detail::impl_prop_is_alphabetic_prop(data);
+    }
+    uaiw_constexpr bool Numeric() const noexcept
+    {
+        // Code points with General_Category=Number (Nd | Nl | No)
+        return General_Category_N();
+    }
+
+#ifdef UNI_ALGO_EXPERIMENTAL
+    // This might be usefull for tests
+    //uaiw_constexpr unsigned char General_Category() const noexcept { return static_cast<unsigned char>(detail::impl_prop_get_gc_prop(data)); }
+#endif
+};
+
+inline uaiw_constexpr general_category get_general_category(char32_t c) noexcept
+{
+    return static_cast<general_category>(detail::impl_prop_get_gc_prop(detail::impl_prop_get_prop(c)));
+}
+
+inline uaiw_constexpr general_category get_general_category(const prop& p) noexcept
+{
+    return static_cast<general_category>(detail::impl_prop_get_gc_prop(p.data));
+}
+
+inline uaiw_constexpr bool is_alphabetic(char32_t c) noexcept
+{
+    return prop{c}.Alphabetic();
+}
+
+inline uaiw_constexpr bool is_alphabetic(const prop& p) noexcept
+{
+    return p.Alphabetic();
+}
+
+inline uaiw_constexpr bool is_numeric(char32_t c) noexcept
+{
+    return prop{c}.Numeric();
+}
+
+inline uaiw_constexpr bool is_numeric(const prop& p) noexcept
+{
+    return p.Numeric();
+}
+
+inline uaiw_constexpr bool is_alphanumeric(char32_t c) noexcept
+{
+    prop p{c};
+
+    return p.Alphabetic() || p.Numeric();
+}
+
+inline uaiw_constexpr bool is_alphanumeric(const prop& p) noexcept
+{
+    return p.Alphabetic() || p.Numeric();
+}
+
+inline uaiw_constexpr bool is_whitespace(char32_t c) noexcept
+{
+    return prop{c}.White_Space();
+}
+
+inline uaiw_constexpr bool is_whitespace(const prop& p) noexcept
+{
+    return p.White_Space();
+}
+
+inline uaiw_constexpr bool is_reserved(char32_t c) noexcept
+{
+    // https://www.unicode.org/glossary/#reserved_code_point
+    return prop{c}.Reserved();
+}
+
+inline uaiw_constexpr bool is_reserved(const prop& p) noexcept
+{
+    // https://www.unicode.org/glossary/#reserved_code_point
+    return p.Reserved();
+}
+
+inline uaiw_constexpr bool is_valid(char32_t c) noexcept
+{
+    // https://www.unicode.org/glossary/#code_point
+    return detail::impl_prop_is_valid(c);
+}
+
+inline uaiw_constexpr bool is_valid_scalar(char32_t c) noexcept
+{
+    // https://www.unicode.org/glossary/#unicode_scalar_value
+    return detail::impl_prop_is_valid_scalar(c);
+}
+
+inline uaiw_constexpr bool is_supplementary(char32_t c) noexcept
+{
+    // https://www.unicode.org/glossary/#supplementary_code_point
+    return detail::impl_prop_is_supplementary(c);
+}
+
+inline uaiw_constexpr bool is_noncharacter(char32_t c) noexcept
+{
+    // https://www.unicode.org/glossary/#noncharacter
+    return detail::impl_prop_is_noncharacter(c);
+}
+
+inline uaiw_constexpr bool is_noncharacter(const prop& p) noexcept
+{
+    // https://www.unicode.org/glossary/#noncharacter
+    return p.Noncharacter_Code_Point();
+}
+
+inline uaiw_constexpr bool is_surrogate(char32_t c) noexcept
+{
+    // https://www.unicode.org/glossary/#surrogate_code_point
+    return detail::impl_prop_is_surrogate(c);
+}
+
+inline uaiw_constexpr bool is_surrogate(const prop& p) noexcept
+{
+    // https://www.unicode.org/glossary/#surrogate_code_point
+    return p.Surrogate();
+}
+
+inline uaiw_constexpr bool is_private_use(char32_t c) noexcept
+{
+    // https://www.unicode.org/glossary/#private_use_code_point
+    return detail::impl_prop_is_private_use(c);
+}
+
+inline uaiw_constexpr bool is_private_use(const prop& p) noexcept
+{
+    // https://www.unicode.org/glossary/#private_use_code_point
+    return p.Private_Use();
+}
+
+inline uaiw_constexpr bool is_control(char32_t c) noexcept
+{
+    // https://www.unicode.org/glossary/#control_codes
+    return detail::impl_prop_is_control(c);
+}
+
+inline uaiw_constexpr bool is_control(const prop& p) noexcept
+{
+    // https://www.unicode.org/glossary/#control_codes
+    return p.Control();
+}
+
+} // namespace una::codepoint
+
+
+// AMALGAMATION: uni_algo/norm.h
+
+
+#ifdef UNI_ALGO_DISABLE_NORM
+#error "Normalization module is disabled via define UNI_ALGO_DISABLE_NORM"
+#endif
+
+#include <string>
+#include <string_view>
+#include <iterator> // std::back_insert_iterator
+
+//!#include "config.h"
+//!#include "version.h"
+//!#include "internal/safe_layer.h"
+
+//!#include "impl/impl_norm.h"
+
+namespace una {
+
+namespace detail {
+
+template<typename Dst, typename Alloc, typename Src, size_t SizeX,
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    size_t(*FnNorm)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator)>
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    size_t(*FnNorm)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer)>
+#else // Safe layer
+    size_t(*FnNorm)(safe::in<typename Src::const_pointer>, safe::end<typename Src::const_pointer>, safe::out<typename Dst::pointer>)>
+#endif
+uaiw_constexpr Dst t_norm(const Alloc& alloc, const Src& src)
+{
+    Dst dst{alloc};
+
+    std::size_t length = src.size();
+
+    if (length)
+    {
+        if (length > dst.max_size() / SizeX) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
+#else
+            std::abort();
+#endif
+        }
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+        dst.resize(length * SizeX);
+        dst.resize(FnNorm(src.cbegin(), src.cend(), dst.begin()));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+        dst.resize(length * SizeX);
+        dst.resize(FnNorm(src.data(), src.data() + src.size(), dst.data()));
+#else // Safe layer
+#  if !defined(__cpp_lib_string_resize_and_overwrite)
+        dst.resize(length * SizeX);
+        dst.resize(FnNorm(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{dst.data(), dst.size()}));
+#  else
+        dst.resize_and_overwrite(length * SizeX, [&src](Dst::pointer p, std::size_t n) noexcept -> std::size_t {
+            return FnNorm(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{p, n});
+        });
+#  endif
+#endif
+
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
+#endif
+    }
+
+    return dst;
+}
+
+// For NFKC and NFKD it is ineffective to preallocate a string because max decomposition is 11/18
+// in these forms, so we are using back_inserter for these normalization forms.
+// Our functions are designed to work with most C++ iterators but sometimes proxy iterators are needed.
+// In this case we need a simple proxy output iterator where operator-() is no-op.
+// See impl/example/cpp_proxy_iterator.h
+template<class Iter>
+class proxy_it_out
+{
+private:
+    Iter it;
+public:
+    uaiw_constexpr explicit proxy_it_out(Iter iter) : it{iter} {}
+    uaiw_constexpr decltype(*it) operator*() { return *it; }
+    uaiw_constexpr std::size_t operator-(const proxy_it_out&) { return 0; } // no-op
+    uaiw_constexpr proxy_it_out& operator++(int) { return *this; } // no-op (by default in C++ output iterators)
+    // Test
+    /*uaiw_constexpr std::size_t operator-(const proxy_it_out& rhs) { return it - rhs.it; }
+    uaiw_constexpr proxy_it_out operator++(int)
+    {
+        proxy_it_out temp(*this);
+        ++it;
+        return temp;
+    }*/
+};
+
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+
+template<typename Dst, typename Alloc, typename Src,
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    size_t(*FnNorm)(typename Src::const_iterator, typename Src::const_iterator, proxy_it_out<std::back_insert_iterator<Dst>>)>
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    size_t(*FnNorm)(typename Src::const_pointer, typename Src::const_pointer, proxy_it_out<std::back_insert_iterator<Dst>>)>
+#else // Safe layer
+    size_t(*FnNorm)(safe::in<typename Src::const_pointer>, safe::end<typename Src::const_pointer>, proxy_it_out<std::back_insert_iterator<Dst>>)>
+#endif
+uaiw_constexpr Dst t_norm2(const Alloc& alloc, const Src& src)
+{
+    Dst dst{alloc};
+
+    std::size_t length = src.size();
+
+    if (length)
+    {
+        if (length > dst.max_size() / 3) // Overflow protection
+        {
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
+            throw std::bad_alloc();
+#else
+            std::abort();
+#endif
+        }
+
+        dst.reserve(length * 3 / 2);
+
+        proxy_it_out<std::back_insert_iterator<Dst>> it_out{std::back_inserter(dst)};
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+        FnNorm(src.cbegin(), src.cend(), it_out);
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+        FnNorm(src.data(), src.data() + src.size(), it_out);
+#else // Safe layer
+        FnNorm(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, it_out);
+#endif
+
+#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
+        dst.shrink_to_fit();
+#endif
+    }
+
+    return dst;
+}
+
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+} // namespace detail
+
+namespace norm {
+
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_nfc_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_norm<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_norm_to_nfc_utf8, detail::impl_norm_to_nfc_utf8>(alloc, source);
+}
+
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_nfd_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_norm<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_norm_to_nfd_utf8, detail::impl_norm_to_nfd_utf8>(alloc, source);
+}
+
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_nfkc_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_norm2<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_norm_to_nfkc_utf8>(alloc, source);
+}
+
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_nfkd_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_norm2<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_norm_to_nfkd_utf8>(alloc, source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+#ifndef UNI_ALGO_DISABLE_PROP
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+to_unaccent_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+    return detail::t_norm<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
+            detail::impl_x_norm_to_unaccent_utf8, detail::impl_norm_to_unaccent_utf8>(alloc, source);
+}
+#endif // UNI_ALGO_DISABLE_PROP
+
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_nfc_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_norm<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_norm_to_nfc_utf16, detail::impl_norm_to_nfc_utf16>(alloc, source);
+}
+
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_nfd_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_norm<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_norm_to_nfd_utf16, detail::impl_norm_to_nfd_utf16>(alloc, source);
+}
+
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_nfkc_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_norm2<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_norm_to_nfkc_utf16>(alloc, source);
+}
+
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_nfkd_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_norm2<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_norm_to_nfkd_utf16>(alloc, source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+#ifndef UNI_ALGO_DISABLE_PROP
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+to_unaccent_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+    return detail::t_norm<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
+            detail::impl_x_norm_to_unaccent_utf16, detail::impl_norm_to_unaccent_utf16>(alloc, source);
+}
+#endif // UNI_ALGO_DISABLE_PROP
+
+template<typename UTF8>
+uaiw_constexpr bool is_nfc_utf8(std::basic_string_view<UTF8> source)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_norm_is_nfc_utf8(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_norm_is_nfc_utf8(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_norm_is_nfc_utf8(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}) == detail::impl_norm_is_yes;
+#endif
+}
+
+template<typename UTF8>
+uaiw_constexpr bool is_nfd_utf8(std::basic_string_view<UTF8> source)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_norm_is_nfd_utf8(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_norm_is_nfd_utf8(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_norm_is_nfd_utf8(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}) == detail::impl_norm_is_yes;
+#endif
+}
+
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+template<typename UTF8>
+uaiw_constexpr bool is_nfkc_utf8(std::basic_string_view<UTF8> source)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_norm_is_nfkc_utf8(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_norm_is_nfkc_utf8(source.data(), source.data() + source.size())  == detail::impl_norm_is_yes;
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_norm_is_nfkc_utf8(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}) == detail::impl_norm_is_yes;
+#endif
+}
+
+template<typename UTF8>
+uaiw_constexpr bool is_nfkd_utf8(std::basic_string_view<UTF8> source)
+{
+    static_assert(std::is_integral_v<UTF8>);
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_norm_is_nfkd_utf8(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_norm_is_nfkd_utf8(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_norm_is_nfkd_utf8(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}) == detail::impl_norm_is_yes;
+#endif
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+template<typename UTF16>
+uaiw_constexpr bool is_nfc_utf16(std::basic_string_view<UTF16> source)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_norm_is_nfc_utf16(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_norm_is_nfc_utf16(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_norm_is_nfc_utf16(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}) == detail::impl_norm_is_yes;
+#endif
+}
+
+template<typename UTF16>
+uaiw_constexpr bool is_nfd_utf16(std::basic_string_view<UTF16> source)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_norm_is_nfd_utf16(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_norm_is_nfd_utf16(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_norm_is_nfd_utf16(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}) == detail::impl_norm_is_yes;
+#endif
+}
+
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+template<typename UTF16>
+uaiw_constexpr bool is_nfkc_utf16(std::basic_string_view<UTF16> source)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_norm_is_nfkc_utf16(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_norm_is_nfkc_utf16(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_norm_is_nfkc_utf16(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}) == detail::impl_norm_is_yes;
+#endif
+}
+
+template<typename UTF16>
+uaiw_constexpr bool is_nfkd_utf16(std::basic_string_view<UTF16> source)
+{
+    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    return detail::impl_norm_is_nfkd_utf16(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    return detail::impl_norm_is_nfkd_utf16(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
+#else // Safe layer
+    namespace safe = detail::safe;
+    return detail::impl_norm_is_nfkd_utf16(safe::in{source.data(), source.size()}, safe::end{source.data() + source.size()}) == detail::impl_norm_is_yes;
+#endif
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+template<typename Iter, typename Sent, typename Dest>
+uaiw_constexpr void to_nfc_utf8(Iter first, Sent last, Dest result)
+{
+    // TODO: static_assert for Dest is output iterator
+    detail::proxy_it_out it_out(result);
+    detail::impl_norm_to_nfc_utf8(first, last, it_out);
+}
+
+template<typename Iter, typename Sent, typename Dest>
+uaiw_constexpr void to_nfd_utf8(Iter first, Sent last, Dest result)
+{
+    // TODO: static_assert for Dest is output iterator
+    detail::proxy_it_out it_out(result);
+    detail::impl_norm_to_nfd_utf8(first, last, it_out);
+}
+
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+template<typename Iter, typename Sent, typename Dest>
+uaiw_constexpr void to_nfkc_utf8(Iter first, Sent last, Dest result)
+{
+    // TODO: static_assert for Dest is output iterator
+    detail::proxy_it_out it_out(result);
+    detail::impl_norm_to_nfkc_utf8(first, last, it_out);
+}
+
+template<typename Iter, typename Sent, typename Dest>
+uaiw_constexpr void to_nfkd_utf8(Iter first, Sent last, Dest result)
+{
+    // TODO: static_assert for Dest is output iterator
+    detail::proxy_it_out it_out(result);
+    detail::impl_norm_to_nfkd_utf8(first, last, it_out);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+inline uaiw_constexpr std::string to_nfc_utf8(std::string_view source)
+{
+    return to_nfc_utf8<char>(source);
+}
+inline uaiw_constexpr std::string to_nfd_utf8(std::string_view source)
+{
+    return to_nfd_utf8<char>(source);
+}
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline uaiw_constexpr std::string to_nfkc_utf8(std::string_view source)
+{
+    return to_nfkc_utf8<char>(source);
+}
+inline uaiw_constexpr std::string to_nfkd_utf8(std::string_view source)
+{
+    return to_nfkd_utf8<char>(source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+#ifndef UNI_ALGO_DISABLE_PROP
+inline uaiw_constexpr std::string to_unaccent_utf8(std::string_view source)
+{
+    return to_unaccent_utf8<char>(source);
+}
+#endif // UNI_ALGO_DISABLE_PROP
+
+inline uaiw_constexpr std::u16string to_nfc_utf16(std::u16string_view source)
+{
+    return to_nfc_utf16<char16_t>(source);
+}
+inline uaiw_constexpr std::u16string to_nfd_utf16(std::u16string_view source)
+{
+    return to_nfd_utf16<char16_t>(source);
+}
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline uaiw_constexpr std::u16string to_nfkc_utf16(std::u16string_view source)
+{
+    return to_nfkc_utf16<char16_t>(source);
+}
+inline uaiw_constexpr std::u16string to_nfkd_utf16(std::u16string_view source)
+{
+    return to_nfkd_utf16<char16_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+#ifndef UNI_ALGO_DISABLE_PROP
+inline uaiw_constexpr std::u16string to_unaccent_utf16(std::u16string_view source)
+{
+    return to_unaccent_utf16<char16_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_PROP
+
+inline uaiw_constexpr bool is_nfc_utf8(std::string_view source)
+{
+    return is_nfc_utf8<char>(source);
+}
+inline uaiw_constexpr bool is_nfd_utf8(std::string_view source)
+{
+    return is_nfd_utf8<char>(source);
+}
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline uaiw_constexpr bool is_nfkc_utf8(std::string_view source)
+{
+    return is_nfkc_utf8<char>(source);
+}
+inline uaiw_constexpr bool is_nfkd_utf8(std::string_view source)
+{
+    return is_nfkd_utf8<char>(source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+inline uaiw_constexpr bool is_nfc_utf16(std::u16string_view source)
+{
+    return is_nfc_utf16<char16_t>(source);
+}
+inline uaiw_constexpr bool is_nfd_utf16(std::u16string_view source)
+{
+    return is_nfd_utf16<char16_t>(source);
+}
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline uaiw_constexpr bool is_nfkc_utf16(std::u16string_view source)
+{
+    return is_nfkc_utf16<char16_t>(source);
+}
+inline uaiw_constexpr bool is_nfkd_utf16(std::u16string_view source)
+{
+    return is_nfkd_utf16<char16_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring to_nfc_utf16(std::wstring_view source)
+{
+    return to_nfc_utf16<wchar_t>(source);
+}
+inline uaiw_constexpr std::wstring to_nfd_utf16(std::wstring_view source)
+{
+    return to_nfd_utf16<wchar_t>(source);
+}
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline uaiw_constexpr std::wstring to_nfkc_utf16(std::wstring_view source)
+{
+    return to_nfkc_utf16<wchar_t>(source);
+}
+inline uaiw_constexpr std::wstring to_nfkd_utf16(std::wstring_view source)
+{
+    return to_nfkd_utf16<wchar_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+#ifndef UNI_ALGO_DISABLE_PROP
+inline uaiw_constexpr std::wstring to_unaccent_utf16(std::wstring_view source)
+{
+    return to_unaccent_utf16<wchar_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_PROP
+
+inline uaiw_constexpr bool is_nfc_utf16(std::wstring_view source)
+{
+    return is_nfc_utf16<wchar_t>(source);
+}
+inline uaiw_constexpr bool is_nfd_utf16(std::wstring_view source)
+{
+    return is_nfd_utf16<wchar_t>(source);
+}
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline uaiw_constexpr bool is_nfkc_utf16(std::wstring_view source)
+{
+    return is_nfkc_utf16<wchar_t>(source);
+}
+inline uaiw_constexpr bool is_nfkd_utf16(std::wstring_view source)
+{
+    return is_nfkd_utf16<wchar_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+
+#ifdef __cpp_lib_char8_t
+
+inline uaiw_constexpr std::u8string to_nfc_utf8(std::u8string_view source)
+{
+    return to_nfc_utf8<char8_t>(source);
+}
+inline uaiw_constexpr std::u8string to_nfd_utf8(std::u8string_view source)
+{
+    return to_nfd_utf8<char8_t>(source);
+}
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline uaiw_constexpr std::u8string to_nfkc_utf8(std::u8string_view source)
+{
+    return to_nfkc_utf8<char8_t>(source);
+}
+inline uaiw_constexpr std::u8string to_nfkd_utf8(std::u8string_view source)
+{
+    return to_nfkd_utf8<char8_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+#ifndef UNI_ALGO_DISABLE_PROP
+inline uaiw_constexpr std::u8string to_unaccent_utf8(std::u8string_view source)
+{
+    return to_unaccent_utf8<char8_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_PROP
+
+inline uaiw_constexpr bool is_nfc_utf8(std::u8string_view source)
+{
+    return is_nfc_utf8<char8_t>(source);
+}
+inline uaiw_constexpr bool is_nfd_utf8(std::u8string_view source)
+{
+    return is_nfd_utf8<char8_t>(source);
+}
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline uaiw_constexpr bool is_nfkc_utf8(std::u8string_view source)
+{
+    return is_nfkc_utf8<char8_t>(source);
+}
+inline uaiw_constexpr bool is_nfkd_utf8(std::u8string_view source)
+{
+    return is_nfkd_utf8<char8_t>(source);
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+#endif // __cpp_lib_char8_t
+
+} // namespace norm
+
+// ----------
+// PROPERTIES
+// ----------
+
+namespace codepoint {
+
+class prop_norm
+{
+private:
+    detail::type_codept data = 0;
+
+public:
+    uaiw_constexpr prop_norm() = delete;
+    uaiw_constexpr explicit prop_norm(char32_t c) noexcept : data{detail::impl_norm_get_prop(c)} {}
+
+    uaiw_constexpr unsigned char Canonical_Combining_Class() const noexcept
+    {
+        // The Unicode Standard: UnicodeData.txt -> Canonical_Combining_Class
+        return detail::impl_norm_get_ccc_prop(data);
+    }
+    uaiw_constexpr bool NFC_Quick_Check_Yes() const noexcept
+    {
+        // The Unicode Standard: DerivedNormalizationProps.txt -> NFC_Quick_Check=Yes
+        return detail::impl_norm_is_nfc_qc_yes_prop(data);
+    }
+    uaiw_constexpr bool NFD_Quick_Check_Yes() const noexcept
+    {
+        // The Unicode Standard: DerivedNormalizationProps.txt -> NFD_Quick_Check=Yes
+        return detail::impl_norm_is_nfd_qc_yes_prop(data);
+    }
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+    uaiw_constexpr bool NFKC_Quick_Check_Yes() const noexcept
+    {
+        // The Unicode Standard: DerivedNormalizationProps.txt -> NFKC_Quick_Check=Yes
+        return detail::impl_norm_is_nfkc_qc_yes_prop(data);
+    }
+    uaiw_constexpr bool NFKD_Quick_Check_Yes() const noexcept
+    {
+        // The Unicode Standard: DerivedNormalizationProps.txt -> NFKD_Quick_Check=Yes
+        return detail::impl_norm_is_nfkd_qc_yes_prop(data);
+    }
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+};
+
+inline uaiw_constexpr char32_t to_compose(char32_t c1, char32_t c2) noexcept
+{
+    return detail::impl_norm_to_compose(c1, c2);
+}
+
+inline uaiw_constexpr std::u32string to_decompose_u32(char32_t c)
+{
+    std::u32string dst;
+    dst.resize(detail::impl_max_norm_decomp_canon);
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    dst.resize(detail::impl_norm_to_decompose(c, dst.begin()));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    dst.resize(detail::impl_norm_to_decompose(c, dst.data()));
+#else // Safe layer
+    dst.resize(detail::impl_norm_to_decompose(c, detail::safe::out{dst.data(), dst.size()}));
+#endif
+    return dst;
+}
+
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline uaiw_constexpr std::u32string to_decompose_compat_u32(char32_t c)
+{
+    std::u32string dst;
+    dst.resize(detail::impl_max_norm_decomp_compat);
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    dst.resize(detail::impl_norm_to_decompose_compat(c, dst.begin()));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    dst.resize(detail::impl_norm_to_decompose_compat(c, dst.data()));
+#else // Safe layer
+    dst.resize(detail::impl_norm_to_decompose_compat(c, detail::safe::out{dst.data(), dst.size()}));
+#endif
+    return dst;
+}
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+#ifdef UNI_ALGO_EXPERIMENTAL
+inline uaiw_constexpr std::u32string to_decompose_hangul_u32(char32_t c)
+{
+    std::u32string dst;
+    dst.resize(detail::impl_max_norm_decomp_canon);
+#if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
+    dst.resize(detail::impl_norm_to_decompose_hangul(c, dst.begin()));
+#elif defined(UNI_ALGO_FORCE_C_POINTERS)
+    dst.resize(detail::impl_norm_to_decompose_hangul(c, dst.data()));
+#else // Safe layer
+    dst.resize(detail::impl_norm_to_decompose_hangul(c, detail::safe::out{dst.data(), dst.size()}));
+#endif
+    return dst;
+}
+#endif // UNI_ALGO_EXPERIMENTAL
+
+} // namespace codepoint
+
+} // namespace una
 
 
 // AMALGAMATION: uni_algo/ranges.h
 
 
 #include <functional>
-#ifdef UNI_ALGO_LOG_CPP_ITER
-#include <iostream>
-#endif
+#include <cassert>
 
 //!#include "config.h"
 //!#include "version.h"
 //!#include "internal/ranges_core.h"
 
-//!#include "impl/impl_iter.h"
-
-namespace uni {
+namespace una {
 
 namespace ranges {
-
-template<class Range, char32_t Error = detail::impl_iter_replacement>
-class utf8_view : public detail::rng::view_base
-{
-private:
-    template<class Iter, class Sent>
-    class utf8
-    {
-        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>>,
-                      "utf8 view requires integral UTF-8 range");
-
-        // Error is only used for tests, do not document it
-        static_assert(Error == detail::impl_iter_error || Error == detail::impl_iter_replacement);
-
-    private:
-        utf8_view* parent = nullptr;
-        Iter it_pos;
-        Iter it_next;
-        detail::type_codept codepoint = 0;
-
-        using iter_tag = detail::rng::iter_tag<Iter>;
-
-        using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
-        using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
-
-    public:
-        using iterator_category = std::conditional_t<is_bidirectional_or_better::value,
-            std::bidirectional_iterator_tag, std::conditional_t<is_forward_or_better::value,
-            std::forward_iterator_tag, std::input_iterator_tag>>;
-        using value_type        = char32_t;
-        using pointer           = void;
-        using reference         = char32_t;
-        using difference_type   = detail::rng::iter_difference_t<Iter>;
-
-        uaiw_constexpr utf8() = default;
-        uaiw_constexpr explicit utf8(utf8_view& p, Iter begin, Sent end)
-            : parent{std::addressof(p)}, it_pos{begin}, it_next{begin}
-        {
-            if (begin != end)
-                it_next = detail::impl_iter_utf8(it_next, end, &codepoint, Error);
-        }
-        //uaiw_constexpr const Iter& base() const & noexcept { return it_pos; }
-        //uaiw_constexpr Iter base() && { return std::move(it_pos); }
-        uaiw_constexpr reference operator*() const noexcept { return codepoint; }
-        uaiw_constexpr Iter begin() const noexcept { return it_pos; }
-        uaiw_constexpr Iter end() const noexcept { return it_next; }
-        uaiw_constexpr utf8& operator++()
-        {
-#ifdef UNI_ALGO_LOG_CPP_ITER
-            std::cout << "uni::views::utf8::operator++() " << this << '\n';
-#endif
-            it_pos = it_next;
-            if (it_pos == std::end(parent->range))
-                return *this;
-            it_next = detail::impl_iter_utf8(it_next, std::end(parent->range), &codepoint, Error);
-            return *this;
-        }
-        uaiw_constexpr utf8 operator++(int)
-        {
-            utf8 tmp = *this;
-            operator++();
-            return tmp;
-        }
-        template<class T = utf8&> typename std::enable_if_t<is_bidirectional_or_better::value, T>
-        uaiw_constexpr operator--()
-        {
-#ifdef UNI_ALGO_LOG_CPP_ITER
-            std::cout << "uni::views::utf8::operator--() " << this << '\n';
-#endif
-            it_next = it_pos;
-            if (it_pos == std::begin(parent->range))
-                return *this;
-            it_pos = detail::impl_iter_rev_utf8(std::begin(parent->range), it_pos, &codepoint, Error);
-            return *this;
-        }
-        template<class T = utf8> typename std::enable_if_t<is_bidirectional_or_better::value, T>
-        uaiw_constexpr operator--(int)
-        {
-            utf8 tmp = *this;
-            operator--();
-            return tmp;
-        }
-        friend uaiw_constexpr bool operator==(const utf8& x, const utf8& y) { return x.it_pos == y.it_pos; }
-        friend uaiw_constexpr bool operator!=(const utf8& x, const utf8& y) { return x.it_pos != y.it_pos; }
-    private:
-        static uaiw_constexpr bool friend_compare_sentinel(const utf8& x) { return x.it_pos == std::end(x.parent->range); }
-    public:
-        friend uaiw_constexpr bool operator==(const utf8& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const utf8& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const utf8& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
-    };
-
-    using iter_t = detail::rng::iterator_t<Range>;
-    using sent_t = detail::rng::sentinel_t<Range>;
-
-    Range range = Range{};
-    utf8<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
-
-public:
-    uaiw_constexpr utf8_view() = default;
-    uaiw_constexpr explicit utf8_view(Range r) : range{std::move(r)} {}
-    //uaiw_constexpr Range base() const & { return range; }
-    //uaiw_constexpr Range base() && { return std::move(range); }
-    uaiw_constexpr auto begin()
-    {
-        if (cached_begin)
-            return cached_begin_value;
-
-        cached_begin_value = utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
-
-        return cached_begin_value;
-    }
-    uaiw_constexpr auto end()
-    {
-        if constexpr (std::is_same_v<iter_t, sent_t>) // std::ranges::common_range<Range>
-            return utf8<iter_t, sent_t>{*this, std::end(range), std::end(range)};
-        else
-            return uni::sentinel;
-    }
-    //uaiw_constexpr bool empty() { return begin() == end(); }
-    //explicit uaiw_constexpr operator bool() { return !empty(); }
-};
-
-template<class Range, char32_t Error = detail::impl_iter_replacement>
-class utf16_view : public detail::rng::view_base
-{
-private:
-    template<class Iter, class Sent>
-    class utf16
-    {
-        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
-                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char16_t),
-                      "utf16 view requires integral UTF-16 range");
-
-        // Error is only used for tests, do not document it
-        static_assert(Error == detail::impl_iter_error || Error == detail::impl_iter_replacement);
-
-    private:
-        utf16_view* parent = nullptr;
-        Iter it_pos;
-        Iter it_next;
-        detail::type_codept codepoint = 0;
-
-        using iter_tag = detail::rng::iter_tag<Iter>;
-
-        using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
-        using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
-
-    public:
-        using iterator_category = std::conditional_t<is_bidirectional_or_better::value,
-            std::bidirectional_iterator_tag, std::conditional_t<is_forward_or_better::value,
-            std::forward_iterator_tag, std::input_iterator_tag>>;
-        using value_type        = char32_t;
-        using pointer           = void;
-        using reference         = char32_t;
-        using difference_type   = detail::rng::iter_difference_t<Iter>;
-
-        uaiw_constexpr utf16() = default;
-        uaiw_constexpr explicit utf16(utf16_view& p, Iter begin, Sent end)
-            : parent{std::addressof(p)}, it_pos{begin}, it_next{begin}
-        {
-            if (begin != end)
-                it_next = detail::impl_iter_utf16(it_next, end, &codepoint, Error);
-        }
-        //uaiw_constexpr const Iter& base() const & noexcept { return it_pos; }
-        //uaiw_constexpr Iter base() && { return std::move(it_pos); }
-        uaiw_constexpr reference operator*() const noexcept { return codepoint; }
-        uaiw_constexpr Iter begin() const noexcept { return it_pos; }
-        uaiw_constexpr Iter end() const noexcept { return it_next; }
-        uaiw_constexpr utf16& operator++()
-        {
-#ifdef UNI_ALGO_LOG_CPP_ITER
-            std::cout << "uni::views::utf16::operator++() " << this << '\n';
-#endif
-            it_pos = it_next;
-            if (it_pos == std::end(parent->range))
-                return *this;
-            it_next = detail::impl_iter_utf16(it_next, std::end(parent->range), &codepoint, Error);
-            return *this;
-        }
-        uaiw_constexpr utf16 operator++(int)
-        {
-            utf16 tmp = *this;
-            operator++();
-            return tmp;
-        }
-        template<class T = utf16&> typename std::enable_if_t<is_bidirectional_or_better::value, T>
-        uaiw_constexpr operator--()
-        {
-#ifdef UNI_ALGO_LOG_CPP_ITER
-            std::cout << "uni::views::utf16::operator--() " << this << '\n';
-#endif
-            it_next = it_pos;
-            if (it_pos == std::begin(parent->range))
-                return *this;
-            it_pos = detail::impl_iter_rev_utf16(std::begin(parent->range), it_pos, &codepoint, Error);
-            return *this;
-        }
-        template<class T = utf16> typename std::enable_if_t<is_bidirectional_or_better::value, T>
-        uaiw_constexpr operator--(int)
-        {
-            utf16 tmp = *this;
-            operator--();
-            return tmp;
-        }
-        friend uaiw_constexpr bool operator==(const utf16& x, const utf16& y) { return x.it_pos == y.it_pos; }
-        friend uaiw_constexpr bool operator!=(const utf16& x, const utf16& y) { return x.it_pos != y.it_pos; }
-    private:
-        static uaiw_constexpr bool friend_compare_sentinel(const utf16& x) { return x.it_pos == std::end(x.parent->range); }
-    public:
-        friend uaiw_constexpr bool operator==(const utf16& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const utf16& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const utf16& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
-    };
-
-    using iter_t = detail::rng::iterator_t<Range>;
-    using sent_t = detail::rng::sentinel_t<Range>;
-
-    Range range = Range{};
-    utf16<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
-
-public:
-    uaiw_constexpr utf16_view() = default;
-    uaiw_constexpr explicit utf16_view(Range r) : range{std::move(r)} {}
-    //uaiw_constexpr Range base() const & { return range; }
-    //uaiw_constexpr Range base() && { return std::move(range); }
-    uaiw_constexpr auto begin()
-    {
-        if (cached_begin)
-            return cached_begin_value;
-
-        cached_begin_value = utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
-
-        return cached_begin_value;
-    }
-    uaiw_constexpr auto end()
-    {
-        if constexpr (std::is_same_v<iter_t, sent_t>) // std::ranges::common_range<Range>
-            return utf16<iter_t, sent_t>{*this, std::end(range), std::end(range)};
-        else
-            return uni::sentinel;
-    }
-    //uaiw_constexpr bool empty() { return begin() == end(); }
-    //explicit uaiw_constexpr operator bool() { return !empty(); }
-};
 
 template<class Range>
 class reverse_view : public detail::rng::view_base
@@ -57396,7 +60426,7 @@ private:
 
     private:
         reverse_view* parent = nullptr;
-        Iter it_pos;
+        Iter it_pos = Iter{};
         bool past_begin = true;
 
     public:
@@ -57462,10 +60492,10 @@ private:
         { return x.it_pos == y.it_pos && x.past_begin == y.past_begin; }
         friend uaiw_constexpr bool operator!=(const reverse& x, const reverse& y)
         { return x.it_pos != y.it_pos || x.past_begin != y.past_begin; }
-        friend uaiw_constexpr bool operator==(const reverse& x, uni::sentinel_t) { return x.past_begin; }
-        friend uaiw_constexpr bool operator!=(const reverse& x, uni::sentinel_t) { return !x.past_begin; }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const reverse& x) { return x.past_begin; }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const reverse& x) { return !x.past_begin; }
+        friend uaiw_constexpr bool operator==(const reverse& x, una::sentinel_t) { return x.past_begin; }
+        friend uaiw_constexpr bool operator!=(const reverse& x, una::sentinel_t) { return !x.past_begin; }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const reverse& x) { return x.past_begin; }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const reverse& x) { return !x.past_begin; }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -57490,16 +60520,16 @@ public:
         else
         {
             // This is to handle case when Range is bidirectional and not std::ranges::common_range
-            // for example std::views::take(x) produces such range and our uni::views::take(x) too
+            // for example std::views::take(x) produces such range and our una::views::take(x) too
             // this is the same how std::ranges handles such case
             // auto it = std::ranges::next(std::ranges::begin(range), std::ranges::end(range));
             auto it = std::begin(range);
             for (auto end = std::end(range); it != end; ++it);
             cached_begin_value = reverse<iter_t, iter_t>{*this, std::begin(range), it};
 
-            // std::string_view{"12345678900"} | uni::views::utf8
-            // | uni::views::reverse | std::views::take(7) | uni::views::reverse
-            // | uni::views::drop(2) | uni::views::reverse -> 00987 (48 48 57 56 55)
+            // std::string_view{"12345678900"} | una::views::utf8
+            // | una::views::reverse | std::views::take(7) | una::views::reverse
+            // | una::views::drop(2) | una::views::reverse -> 00987 (48 48 57 56 55)
         }
         cached_begin = true;
 
@@ -57522,7 +60552,7 @@ private:
     {
     private:
         filter_view* parent = nullptr;
-        Iter it_pos;
+        Iter it_pos = Iter{};
 
         using iter_tag = detail::rng::iter_tag<Iter>;
 
@@ -57585,10 +60615,10 @@ private:
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const filter& x) { return x.it_pos == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const filter& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const filter& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const filter& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const filter& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const filter& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const filter& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const filter& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const filter& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -57620,7 +60650,7 @@ public:
         if constexpr (std::is_same_v<iter_t, sent_t>)
             return filter<iter_t, sent_t>{*this, std::end(range), std::end(range)};
         else
-            return uni::sentinel;
+            return una::sentinel;
     }
 };
 
@@ -57636,7 +60666,7 @@ private:
     {
     private:
         transform_view* parent = nullptr;
-        Iter it_pos;
+        Iter it_pos = Iter{};
 
         using iter_tag = detail::rng::iter_tag<Iter>;
 
@@ -57695,10 +60725,10 @@ private:
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const transform& x) { return x.it_pos == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const transform& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const transform& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const transform& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const transform& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const transform& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const transform& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const transform& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const transform& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -57721,7 +60751,7 @@ public:
         if constexpr (std::is_same_v<iter_t, sent_t>)
             return transform<iter_t, sent_t>{*this, std::end(range), std::end(range)};
         else
-            return uni::sentinel;
+            return una::sentinel;
     }
 };
 
@@ -57738,7 +60768,7 @@ private:
     {
     private:
         take_view* parent = nullptr;
-        Iter it_pos;
+        Iter it_pos = Iter{};
         std::size_t count = 0;
 
         using iter_tag = detail::rng::iter_tag<Iter>;
@@ -57804,10 +60834,10 @@ private:
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const take& x) { return x.count == 0 || x.it_pos == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const take& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const take& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const take& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const take& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const take& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const take& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const take& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const take& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -57827,7 +60857,7 @@ public:
     }
     uaiw_constexpr auto end()
     {
-        return uni::sentinel;
+        return una::sentinel;
     }
 };
 
@@ -57843,7 +60873,7 @@ private:
     {
     private:
         drop_view* parent = nullptr;
-        Iter it_pos;
+        Iter it_pos = Iter{};
 
         using iter_tag = detail::rng::iter_tag<Iter>;
 
@@ -57906,10 +60936,10 @@ private:
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const drop& x) { return x.it_pos == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const drop& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const drop& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const drop& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const drop& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const drop& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const drop& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const drop& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const drop& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -57940,35 +60970,13 @@ public:
         if constexpr (std::is_same_v<iter_t, sent_t>)
             return drop<iter_t, sent_t>{*this, std::end(range), std::end(range)};
         else
-            return uni::sentinel;
+            return una::sentinel;
     }
 };
 
 } // namespace ranges
 
 namespace detail::rng {
-
-/* UTF8_VIEW */
-
-struct adaptor_utf8
-{
-    template<class R>
-    uaiw_constexpr auto operator()(R&& r) const
-    { return ranges::utf8_view{std::forward<R>(r)}; }
-};
-template<class R>
-uaiw_constexpr auto operator|(R&& r, const adaptor_utf8& a) { return a(std::forward<R>(r)); }
-
-/* UTF16_VIEW */
-
-struct adaptor_utf16
-{
-    template<class R>
-    uaiw_constexpr auto operator()(R&& r) const
-    { return ranges::utf16_view{std::forward<R>(r)}; }
-};
-template<class R>
-uaiw_constexpr auto operator|(R&& r, const adaptor_utf16& a) { return a(std::forward<R>(r)); }
 
 /* FILTER_VIEW */
 
@@ -58074,6 +61082,342 @@ struct adaptor_transform
     uaiw_constexpr auto operator()(Func f) const
     { return adaptor_closure_transform<Func>{std::move(f)}; }
 };
+
+} // namespace detail::rng
+
+namespace ranges::views {
+
+inline constexpr detail::rng::adaptor_reverse reverse;
+inline constexpr detail::rng::adaptor_filter filter;
+inline constexpr detail::rng::adaptor_transform transform;
+inline constexpr detail::rng::adaptor_take take;
+inline constexpr detail::rng::adaptor_drop drop;
+
+} // namespace views
+
+namespace ranges {
+
+// These user-defined CTAD guides are important
+// the problem the code compiles in most cases and works perfectly fine
+// even if there is a mistake here but there will be extra move/copy operations
+// for the object we are viewing so the performance will be much worse
+// It is handled by test/test_ranges.h -> test_ranges_ctad()
+
+template<class Range, class Pred>
+filter_view(Range&&, Pred) -> filter_view<views::all_t<Range>, Pred>;
+
+template<class Range>
+reverse_view(Range&&) -> reverse_view<views::all_t<Range>>;
+
+template<class Range>
+drop_view(Range&&, std::size_t) -> drop_view<views::all_t<Range>>;
+
+template<class Range, class Func>
+transform_view(Range&&, Func) -> transform_view<views::all_t<Range>, Func>;
+
+template<class Range>
+take_view(Range&&, std::size_t) -> take_view<views::all_t<Range>>;
+
+} // namespace ranges
+
+namespace views = ranges::views;
+
+} // namespace una
+
+
+// AMALGAMATION: uni_algo/ranges_conv.h
+
+
+#ifdef UNI_ALGO_LOG_CPP_ITER
+#include <iostream>
+#endif
+
+//!#include "config.h"
+//!#include "version.h"
+//!#include "internal/ranges_core.h"
+
+//!#include "impl/impl_iter.h"
+
+namespace una {
+
+namespace ranges {
+
+template<class Range, char32_t Error = detail::impl_iter_replacement>
+class utf8_view : public detail::rng::view_base
+{
+private:
+    template<class Iter, class Sent>
+    class utf8
+    {
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>>,
+                      "utf8 view requires integral UTF-8 range");
+
+        // Error is only used for tests, do not document it
+        static_assert(Error == detail::impl_iter_error || Error == detail::impl_iter_replacement);
+
+    private:
+        utf8_view* parent = nullptr;
+        Iter it_pos = Iter{};
+        Iter it_next = Iter{};
+        detail::type_codept codepoint = 0;
+
+        using iter_tag = detail::rng::iter_tag<Iter>;
+
+        using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
+        using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
+
+    public:
+        using iterator_category = std::conditional_t<is_bidirectional_or_better::value,
+            std::bidirectional_iterator_tag, std::conditional_t<is_forward_or_better::value,
+            std::forward_iterator_tag, std::input_iterator_tag>>;
+        using value_type        = char32_t;
+        using pointer           = void;
+        using reference         = char32_t;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
+
+        uaiw_constexpr utf8() = default;
+        uaiw_constexpr explicit utf8(utf8_view& p, Iter begin, Sent end)
+            : parent{std::addressof(p)}, it_pos{begin}, it_next{begin}
+        {
+            if (begin != end)
+                it_next = detail::impl_iter_utf8(it_next, end, &codepoint, Error);
+        }
+        //uaiw_constexpr const Iter& base() const & noexcept { return it_pos; }
+        //uaiw_constexpr Iter base() && { return std::move(it_pos); }
+        uaiw_constexpr reference operator*() const noexcept { return codepoint; }
+        uaiw_constexpr Iter begin() const noexcept { return it_pos; }
+        uaiw_constexpr Iter end() const noexcept { return it_next; }
+        uaiw_constexpr utf8& operator++()
+        {
+#ifdef UNI_ALGO_LOG_CPP_ITER
+            std::cout << "una::views::utf8::operator++() " << this << '\n';
+#endif
+            it_pos = it_next;
+            if (it_pos == std::end(parent->range))
+                return *this;
+            it_next = detail::impl_iter_utf8(it_next, std::end(parent->range), &codepoint, Error);
+            return *this;
+        }
+        uaiw_constexpr utf8 operator++(int)
+        {
+            utf8 tmp = *this;
+            operator++();
+            return tmp;
+        }
+        template<class T = utf8&> typename std::enable_if_t<is_bidirectional_or_better::value, T>
+        uaiw_constexpr operator--()
+        {
+#ifdef UNI_ALGO_LOG_CPP_ITER
+            std::cout << "una::views::utf8::operator--() " << this << '\n';
+#endif
+            it_next = it_pos;
+            if (it_pos == std::begin(parent->range))
+                return *this;
+            it_pos = detail::impl_iter_rev_utf8(std::begin(parent->range), it_pos, &codepoint, Error);
+            return *this;
+        }
+        template<class T = utf8> typename std::enable_if_t<is_bidirectional_or_better::value, T>
+        uaiw_constexpr operator--(int)
+        {
+            utf8 tmp = *this;
+            operator--();
+            return tmp;
+        }
+        friend uaiw_constexpr bool operator==(const utf8& x, const utf8& y) { return x.it_pos == y.it_pos; }
+        friend uaiw_constexpr bool operator!=(const utf8& x, const utf8& y) { return x.it_pos != y.it_pos; }
+    private:
+        static uaiw_constexpr bool friend_compare_sentinel(const utf8& x) { return x.it_pos == std::end(x.parent->range); }
+    public:
+        friend uaiw_constexpr bool operator==(const utf8& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const utf8& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const utf8& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
+    };
+
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
+
+    Range range = Range{};
+    utf8<iter_t, sent_t> cached_begin_value;
+    bool cached_begin = false;
+
+public:
+    uaiw_constexpr utf8_view() = default;
+    uaiw_constexpr explicit utf8_view(Range r) : range{std::move(r)} {}
+    //uaiw_constexpr Range base() const & { return range; }
+    //uaiw_constexpr Range base() && { return std::move(range); }
+    uaiw_constexpr auto begin()
+    {
+        if (cached_begin)
+            return cached_begin_value;
+
+        cached_begin_value = utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
+        cached_begin = true;
+
+        return cached_begin_value;
+    }
+    uaiw_constexpr auto end()
+    {
+        if constexpr (std::is_same_v<iter_t, sent_t>) // std::ranges::common_range<Range>
+            return utf8<iter_t, sent_t>{*this, std::end(range), std::end(range)};
+        else
+            return una::sentinel;
+    }
+    //uaiw_constexpr bool empty() { return begin() == end(); }
+    //explicit uaiw_constexpr operator bool() { return !empty(); }
+};
+
+template<class Range, char32_t Error = detail::impl_iter_replacement>
+class utf16_view : public detail::rng::view_base
+{
+private:
+    template<class Iter, class Sent>
+    class utf16
+    {
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char16_t),
+                      "utf16 view requires integral UTF-16 range");
+
+        // Error is only used for tests, do not document it
+        static_assert(Error == detail::impl_iter_error || Error == detail::impl_iter_replacement);
+
+    private:
+        utf16_view* parent = nullptr;
+        Iter it_pos = Iter{};
+        Iter it_next = Iter{};
+        detail::type_codept codepoint = 0;
+
+        using iter_tag = detail::rng::iter_tag<Iter>;
+
+        using is_bidirectional_or_better = std::is_convertible<iter_tag, std::bidirectional_iterator_tag>;
+        using is_forward_or_better       = std::is_convertible<iter_tag, std::forward_iterator_tag>;
+
+    public:
+        using iterator_category = std::conditional_t<is_bidirectional_or_better::value,
+            std::bidirectional_iterator_tag, std::conditional_t<is_forward_or_better::value,
+            std::forward_iterator_tag, std::input_iterator_tag>>;
+        using value_type        = char32_t;
+        using pointer           = void;
+        using reference         = char32_t;
+        using difference_type   = detail::rng::iter_difference_t<Iter>;
+
+        uaiw_constexpr utf16() = default;
+        uaiw_constexpr explicit utf16(utf16_view& p, Iter begin, Sent end)
+            : parent{std::addressof(p)}, it_pos{begin}, it_next{begin}
+        {
+            if (begin != end)
+                it_next = detail::impl_iter_utf16(it_next, end, &codepoint, Error);
+        }
+        //uaiw_constexpr const Iter& base() const & noexcept { return it_pos; }
+        //uaiw_constexpr Iter base() && { return std::move(it_pos); }
+        uaiw_constexpr reference operator*() const noexcept { return codepoint; }
+        uaiw_constexpr Iter begin() const noexcept { return it_pos; }
+        uaiw_constexpr Iter end() const noexcept { return it_next; }
+        uaiw_constexpr utf16& operator++()
+        {
+#ifdef UNI_ALGO_LOG_CPP_ITER
+            std::cout << "una::views::utf16::operator++() " << this << '\n';
+#endif
+            it_pos = it_next;
+            if (it_pos == std::end(parent->range))
+                return *this;
+            it_next = detail::impl_iter_utf16(it_next, std::end(parent->range), &codepoint, Error);
+            return *this;
+        }
+        uaiw_constexpr utf16 operator++(int)
+        {
+            utf16 tmp = *this;
+            operator++();
+            return tmp;
+        }
+        template<class T = utf16&> typename std::enable_if_t<is_bidirectional_or_better::value, T>
+        uaiw_constexpr operator--()
+        {
+#ifdef UNI_ALGO_LOG_CPP_ITER
+            std::cout << "una::views::utf16::operator--() " << this << '\n';
+#endif
+            it_next = it_pos;
+            if (it_pos == std::begin(parent->range))
+                return *this;
+            it_pos = detail::impl_iter_rev_utf16(std::begin(parent->range), it_pos, &codepoint, Error);
+            return *this;
+        }
+        template<class T = utf16> typename std::enable_if_t<is_bidirectional_or_better::value, T>
+        uaiw_constexpr operator--(int)
+        {
+            utf16 tmp = *this;
+            operator--();
+            return tmp;
+        }
+        friend uaiw_constexpr bool operator==(const utf16& x, const utf16& y) { return x.it_pos == y.it_pos; }
+        friend uaiw_constexpr bool operator!=(const utf16& x, const utf16& y) { return x.it_pos != y.it_pos; }
+    private:
+        static uaiw_constexpr bool friend_compare_sentinel(const utf16& x) { return x.it_pos == std::end(x.parent->range); }
+    public:
+        friend uaiw_constexpr bool operator==(const utf16& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const utf16& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const utf16& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
+    };
+
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
+
+    Range range = Range{};
+    utf16<iter_t, sent_t> cached_begin_value;
+    bool cached_begin = false;
+
+public:
+    uaiw_constexpr utf16_view() = default;
+    uaiw_constexpr explicit utf16_view(Range r) : range{std::move(r)} {}
+    //uaiw_constexpr Range base() const & { return range; }
+    //uaiw_constexpr Range base() && { return std::move(range); }
+    uaiw_constexpr auto begin()
+    {
+        if (cached_begin)
+            return cached_begin_value;
+
+        cached_begin_value = utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
+        cached_begin = true;
+
+        return cached_begin_value;
+    }
+    uaiw_constexpr auto end()
+    {
+        if constexpr (std::is_same_v<iter_t, sent_t>) // std::ranges::common_range<Range>
+            return utf16<iter_t, sent_t>{*this, std::end(range), std::end(range)};
+        else
+            return una::sentinel;
+    }
+    //uaiw_constexpr bool empty() { return begin() == end(); }
+    //explicit uaiw_constexpr operator bool() { return !empty(); }
+};
+
+} // namespace ranges
+
+namespace detail::rng {
+
+/* UTF8_VIEW */
+
+struct adaptor_utf8
+{
+    template<class R>
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::utf8_view{std::forward<R>(r)}; }
+};
+template<class R>
+uaiw_constexpr auto operator|(R&& r, const adaptor_utf8& a) { return a(std::forward<R>(r)); }
+
+/* UTF16_VIEW */
+
+struct adaptor_utf16
+{
+    template<class R>
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::utf16_view{std::forward<R>(r)}; }
+};
+template<class R>
+uaiw_constexpr auto operator|(R&& r, const adaptor_utf16& a) { return a(std::forward<R>(r)); }
 
 /* TO_UTF8 */
 
@@ -58273,11 +61617,6 @@ namespace ranges::views {
 
 inline constexpr detail::rng::adaptor_utf8 utf8;
 inline constexpr detail::rng::adaptor_utf16 utf16;
-inline constexpr detail::rng::adaptor_reverse reverse;
-inline constexpr detail::rng::adaptor_filter filter;
-inline constexpr detail::rng::adaptor_transform transform;
-inline constexpr detail::rng::adaptor_take take;
-inline constexpr detail::rng::adaptor_drop drop;
 
 } // namespace views
 
@@ -58295,28 +61634,13 @@ utf8_view(Range&&) -> utf8_view<views::all_t<Range>>;
 template<class Range>
 utf16_view(Range&&) -> utf16_view<views::all_t<Range>>;
 
-template<class Range, class Pred>
-filter_view(Range&&, Pred) -> filter_view<views::all_t<Range>, Pred>;
-
-template<class Range>
-reverse_view(Range&&) -> reverse_view<views::all_t<Range>>;
-
-template<class Range>
-drop_view(Range&&, std::size_t) -> drop_view<views::all_t<Range>>;
-
-template<class Range, class Func>
-transform_view(Range&&, Func) -> transform_view<views::all_t<Range>, Func>;
-
-template<class Range>
-take_view(Range&&, std::size_t) -> take_view<views::all_t<Range>>;
-
 } // namespace ranges
 
 namespace ranges {
 
 // NOTE:
 // If {} below is not used MSVC 19.16 and probably other versions produces this:
-// error C2737: 'uni::ranges::to_utf8': 'constexpr' object must be initialized
+// error C2737: 'una::ranges::to_utf8': 'constexpr' object must be initialized
 // It should not interfere with anything.
 
 template<class Result>
@@ -58332,628 +61656,503 @@ inline constexpr detail::rng::adaptor_to_utf16_reserve<Result> to_utf16_reserve{
 
 namespace views = ranges::views;
 
-} // namespace uni
+} // namespace una
 
 
-// AMALGAMATION: uni_algo/conv.h
+// AMALGAMATION: uni_algo/ranges_norm.h
 
-
-#include <type_traits>
-#include <string>
-#include <string_view>
-#include <cassert>
 
 //!#include "config.h"
 //!#include "version.h"
-//!#include "internal/error.h"
+//!#include "internal/safe_layer.h"
+//!#include "internal/ranges_core.h"
 
-//!#include "impl/impl_conv.h"
+//!#include "impl/impl_norm.h"
 
-namespace uni {
-
-namespace detail {
-
-// Implementation details
-// There were 2 possible ways to implement the conversion: using resize or using back_inserter,
-// back_inserter was always 10-30% slower in tests even with reserve so it uses resize approach.
-// Also it doesn't use 2-pass approach: calculate converted string size and then the actual conversion.
-// This is obviously at least 50% slower, so it uses 1-pass with shrink_to_fit after.
-
-//#define UNI_ALGO_DISABLE_CPP_ITERATORS
-// With this define pointers will be used instead of iterators.
-// The only reason to use the define is to maximize performance in debug builds,
-// for example MSVC debug iterators are very slow.
-// Performance difference of pointers vs iterators in release builds
-// is about 1-2% slower/faster in different compilers and must be considered irrelevant.
-// The behaviour of pointers and iterators versions always absolutely the same.
-
-//#define UNI_ALGO_DISABLE_SHRINK_TO_FIT
-// With this define shrink_to_fit call will be omitted.
-// Performance impact of shrink_to_fit call is 2-20% slower depends on the length of the string.
-
-template<typename Dst, typename Alloc, typename Src, size_t SizeX,
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FnUTF)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer, size_t*)>
-#else
-    size_t(*FnUTF)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator, size_t*)>
+#ifdef UNI_ALGO_DISABLE_NORM
+#error "Normalization module is disabled via define UNI_ALGO_DISABLE_NORM"
 #endif
-Dst t_utf(const Alloc& alloc, const Src& src)
+
+namespace una {
+
+namespace ranges::norm {
+
+template<class Range>
+class nfc_view : public detail::rng::view_base
 {
-    Dst dst{alloc};
-
-    std::size_t length = src.size();
-
-    if (length)
+private:
+    template<class Iter, class Sent>
+    class nfc
     {
-        if (length > dst.max_size() / SizeX) // Overflow protection
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
+                      "norm::nfc view requires char32_t range");
+
+    private:
+        nfc_view* parent = nullptr;
+        Iter it_pos = Iter{};
+
+        bool stream_end = false;
+
+        detail::type_codept codepoint = 0;
+        detail::impl_norm_iter_state state{};
+
+        uaiw_constexpr void iter_func_norm_nfc()
         {
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
-            throw std::bad_alloc();
-#else
-            std::abort();
-#endif
+            if (!detail::inline_norm_iter_ready(&state))
+                while (it_pos != std::end(parent->range) && !detail::inline_norm_iter_nfc(&state, *it_pos++));
+            if (!detail::inline_norm_iter_next_comp(&state, &codepoint))
+                stream_end = true;
         }
 
-        dst.resize(length * SizeX);
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        dst.resize(FnUTF(src.data(), src.data() + src.size(), dst.data(), nullptr));
-#else
-        dst.resize(FnUTF(src.cbegin(), src.cend(), dst.begin(), nullptr));
-#endif
-#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
-        dst.shrink_to_fit();
-#endif
-    }
+    public:
+        using iterator_category = std::input_iterator_tag;
+        using value_type        = char32_t;
+        using pointer           = void;
+        using reference         = char32_t;
+        using difference_type   = std::ptrdiff_t;
 
-    return dst;
-}
+        uaiw_constexpr nfc() = default;
+        uaiw_constexpr explicit nfc(nfc_view& p, Iter begin, Sent) : parent{std::addressof(p)}, it_pos{begin}
+        {
+            detail::impl_norm_iter_state_reset(&state);
 
-template<typename Dst, typename Alloc, typename Src, size_t SizeX,
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FnUTF)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer, size_t*)>
-#else
-    size_t(*FnUTF)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator, size_t*)>
-#endif
-Dst t_utf(const Alloc& alloc, const Src& src, uni::error& error)
-{
-    error.reset();
+            iter_func_norm_nfc(); // Fn call must not be inlined
+        }
+        uaiw_constexpr reference operator*() const noexcept { return codepoint; }
+        uaiw_constexpr nfc& operator++()
+        {
+            iter_func_norm_nfc(); // Fn call must not be inlined
 
-    Dst dst{alloc};
+            return *this;
+        }
+        uaiw_constexpr nfc operator++(int)
+        {
+            nfc tmp = *this;
+            operator++();
+            return tmp;
+        }
+        friend uaiw_constexpr bool operator==(const nfc& x, const nfc& y) { return x.stream_end == y.stream_end; }
+        friend uaiw_constexpr bool operator!=(const nfc& x, const nfc& y) { return x.stream_end != y.stream_end; }
+        friend uaiw_constexpr bool operator==(const nfc& x, una::sentinel_t) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(const nfc& x, una::sentinel_t) { return !x.stream_end; }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const nfc& x) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const nfc& x) { return !x.stream_end; }
+    };
 
-    std::size_t length = src.size();
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
-    if (length)
+    Range range = Range{};
+    nfc<iter_t, sent_t> cached_begin_value;
+    bool cached_begin = false;
+
+public:
+    uaiw_constexpr nfc_view() = default;
+    uaiw_constexpr explicit nfc_view(Range r) : range{std::move(r)} {}
+    //uaiw_constexpr Range base() const & { return range; }
+    //uaiw_constexpr Range base() && { return std::move(range); }
+    uaiw_constexpr auto begin()
     {
-        if (length > dst.max_size() / SizeX) // Overflow protection
-        {
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
-            throw std::bad_alloc();
-#else
-            std::abort();
-#endif
-        }
+        if (cached_begin)
+            return cached_begin_value;
 
-        dst.resize(length * SizeX);
-        std::size_t err = impl_npos;
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        std::size_t size = FnUTF(src.data(), src.data() + src.size(), dst.data(), &err);
-#else
-        std::size_t size = FnUTF(src.cbegin(), src.cend(), dst.begin(), &err);
-#endif
-        if (err == impl_npos)
-            dst.resize(size);
-        else
-        {
-            dst.clear();
-            error = uni::error{true, err};
-        }
-#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
-        dst.shrink_to_fit();
-#endif
+        cached_begin_value = nfc<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
+        cached_begin = true;
+
+        return cached_begin_value;
     }
+    uaiw_constexpr auto end()
+    {
+        return una::sentinel;
+    }
+    //uaiw_constexpr bool empty() { return begin() == end(); }
+    //explicit uaiw_constexpr operator bool() { return !empty(); }
+};
 
-    return dst;
-}
+template<class Range>
+class nfd_view : public detail::rng::view_base
+{
+private:
+    template<class Iter, class Sent>
+    class nfd
+    {
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
+                      "norm::nfd view requires char32_t range");
 
-} // namespace detail
+    private:
+        nfd_view* parent = nullptr;
+        Iter it_pos = Iter{};
 
-// Template functions
+        bool stream_end = false;
 
-template<typename UTF8, typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-utf8to16(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+        detail::type_codept codepoint = 0;
+        detail::impl_norm_iter_state state{};
 
-    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_utf8to16, detail::impl_utf8to16>(alloc, source);
-}
-template<typename UTF16, typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-utf16to8(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+        uaiw_constexpr void iter_func_norm_nfd()
+        {
+            if (!detail::inline_norm_iter_ready(&state))
+                while (it_pos != std::end(parent->range) && !detail::inline_norm_iter_nfd(&state, *it_pos++));
+            if (!detail::inline_norm_iter_next_decomp(&state, &codepoint))
+                stream_end = true;
+        }
 
-    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_utf16to8, detail::impl_utf16to8>(alloc, source);
-}
-template<typename UTF8, typename UTF32, typename Alloc = std::allocator<UTF32>>
-std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
-utf8to32(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+    public:
+        using iterator_category = std::input_iterator_tag;
+        using value_type        = char32_t;
+        using pointer           = void;
+        using reference         = char32_t;
+        using difference_type   = std::ptrdiff_t;
 
-    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_utf8to32, detail::impl_utf8to32>(alloc, source);
-}
-template<typename UTF32, typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-utf32to8(std::basic_string_view<UTF32> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+        uaiw_constexpr nfd() = default;
+        uaiw_constexpr explicit nfd(nfd_view& p, Iter begin, Sent) : parent{std::addressof(p)}, it_pos{begin}
+        {
+            detail::impl_norm_iter_state_reset(&state);
 
-    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF32>,
-            detail::impl_x_utf32to8, detail::impl_utf32to8>(alloc, source);
-}
-template<typename UTF16, typename UTF32, typename Alloc = std::allocator<UTF32>>
-std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
-utf16to32(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+            iter_func_norm_nfd(); // Fn call must not be inlined
+        }
+        uaiw_constexpr reference operator*() const noexcept { return codepoint; }
+        uaiw_constexpr nfd& operator++()
+        {
+            iter_func_norm_nfd(); // Fn call must not be inlined
 
-    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_utf16to32, detail::impl_utf16to32>(alloc, source);
-}
-template<typename UTF32, typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-utf32to16(std::basic_string_view<UTF32> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+            return *this;
+        }
+        uaiw_constexpr nfd operator++(int)
+        {
+            nfd tmp = *this;
+            operator++();
+            return tmp;
+        }
+        friend uaiw_constexpr bool operator==(const nfd& x, const nfd& y) { return x.stream_end == y.stream_end; }
+        friend uaiw_constexpr bool operator!=(const nfd& x, const nfd& y) { return x.stream_end != y.stream_end; }
+        friend uaiw_constexpr bool operator==(const nfd& x, una::sentinel_t) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(const nfd& x, una::sentinel_t) { return !x.stream_end; }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const nfd& x) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const nfd& x) { return !x.stream_end; }
+    };
 
-    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF32>,
-            detail::impl_x_utf32to16, detail::impl_utf32to16>(alloc, source);
-}
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
-// Short non-template functions for std::string, std::wstring, std::u16string, std::u32string
+    Range range = Range{};
+    nfd<iter_t, sent_t> cached_begin_value;
+    bool cached_begin = false;
 
-inline std::u16string utf8to16u(std::string_view source)
-{
-    return utf8to16<char, char16_t>(source);
-}
-inline std::string utf16to8(std::u16string_view source)
-{
-    return utf16to8<char16_t, char>(source);
-}
-inline std::u32string utf8to32u(std::string_view source)
-{
-    return utf8to32<char, char32_t>(source);
-}
-inline std::string utf32to8(std::u32string_view source)
-{
-    return utf32to8<char32_t, char>(source);
-}
-inline std::u32string utf16to32u(std::u16string_view source)
-{
-    return utf16to32<char16_t, char32_t>(source);
-}
-inline std::u16string utf32to16u(std::u32string_view source)
-{
-    return utf32to16<char32_t, char16_t>(source);
-}
+public:
+    uaiw_constexpr nfd_view() = default;
+    uaiw_constexpr explicit nfd_view(Range r) : range{std::move(r)} {}
+    //uaiw_constexpr Range base() const & { return range; }
+    //uaiw_constexpr Range base() && { return std::move(range); }
+    uaiw_constexpr auto begin()
+    {
+        if (cached_begin)
+            return cached_begin_value;
 
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring utf8to16(std::string_view source)
-{
-    return utf8to16<char, wchar_t>(source);
-}
-inline std::string utf16to8(std::wstring_view source)
-{
-    return utf16to8<wchar_t, char>(source);
-}
-inline std::u32string utf16to32u(std::wstring_view source)
-{
-    return utf16to32<wchar_t, char32_t>(source);
-}
-inline std::wstring utf32to16(std::u32string_view source)
-{
-    return utf32to16<char32_t, wchar_t>(source);
-}
-#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
-inline std::wstring utf8to32(std::string_view source)
-{
-    return utf8to32<char, wchar_t>(source);
-}
-inline std::string utf32to8(std::wstring_view source)
-{
-    return utf32to8<wchar_t, char>(source);
-}
-inline std::wstring utf16to32(std::u16string_view source)
-{
-    return utf16to32<char16_t, wchar_t>(source);
-}
-inline std::u16string utf32to16u(std::wstring_view source)
-{
-    return utf32to16<wchar_t, char16_t>(source);
-}
-#endif // WCHAR_MAX >= 0x7FFFFFFF
+        cached_begin_value = nfd<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
+        cached_begin = true;
 
-namespace strict {
+        return cached_begin_value;
+    }
+    uaiw_constexpr auto end()
+    {
+        return una::sentinel;
+    }
+    //uaiw_constexpr bool empty() { return begin() == end(); }
+    //explicit uaiw_constexpr operator bool() { return !empty(); }
+};
 
-// Template functions
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
 
-template<typename UTF8, typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-utf8to16(std::basic_string_view<UTF8> source, uni::error& error, const Alloc& alloc = Alloc())
+template<class Range>
+class nfkc_view : public detail::rng::view_base
 {
-    static_assert(std::is_integral_v<UTF8>);
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+private:
+    template<class Iter, class Sent>
+    class nfkc
+    {
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
+                      "norm::nfkc view requires char32_t range");
 
-    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_utf8to16, detail::impl_utf8to16>(alloc, source, error);
-}
-template<typename UTF16, typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-utf16to8(std::basic_string_view<UTF16> source, uni::error& error, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+    private:
+        nfkc_view* parent = nullptr;
+        Iter it_pos = Iter{};
 
-    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_utf16to8, detail::impl_utf16to8>(alloc, source, error);
-}
-template<typename UTF8, typename UTF32, typename Alloc = std::allocator<UTF32>>
-std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
-utf8to32(std::basic_string_view<UTF8> source, uni::error& error, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+        bool stream_end = false;
 
-    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_utf8to32, detail::impl_utf8to32>(alloc, source, error);
-}
-template<typename UTF32, typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-utf32to8(std::basic_string_view<UTF32> source, uni::error& error, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+        detail::type_codept codepoint = 0;
+        detail::impl_norm_iter_state state{};
 
-    return detail::t_utf<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF32>,
-            detail::impl_x_utf32to8, detail::impl_utf32to8>(alloc, source, error);
-}
-template<typename UTF16, typename UTF32, typename Alloc = std::allocator<UTF32>>
-std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>
-utf16to32(std::basic_string_view<UTF16> source, uni::error& error, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+        uaiw_constexpr void iter_func_norm_nfkc()
+        {
+            if (!detail::inline_norm_iter_ready(&state))
+                while (it_pos != std::end(parent->range) && !detail::inline_norm_iter_nfkc(&state, *it_pos++));
+            if (!detail::inline_norm_iter_next_comp(&state, &codepoint))
+                stream_end = true;
+        }
 
-    return detail::t_utf<std::basic_string<UTF32, std::char_traits<UTF32>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_utf16to32, detail::impl_utf16to32>(alloc, source, error);
-}
-template<typename UTF32, typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-utf32to16(std::basic_string_view<UTF32> source, uni::error& error, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+    public:
+        using iterator_category = std::input_iterator_tag;
+        using value_type        = char32_t;
+        using pointer           = void;
+        using reference         = char32_t;
+        using difference_type   = std::ptrdiff_t;
 
-    return detail::t_utf<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF32>,
-            detail::impl_x_utf32to16, detail::impl_utf32to16>(alloc, source, error);
-}
+        uaiw_constexpr nfkc() = default;
+        uaiw_constexpr explicit nfkc(nfkc_view& p, Iter begin, Sent) : parent{std::addressof(p)}, it_pos{begin}
+        {
+            detail::impl_norm_iter_state_reset(&state);
 
-// Short non-template functions for std::string, std::wstring, std::u16string, std::u32string
+            iter_func_norm_nfkc(); // Fn call must not be inlined
+        }
+        uaiw_constexpr reference operator*() const noexcept { return codepoint; }
+        uaiw_constexpr nfkc& operator++()
+        {
+            iter_func_norm_nfkc(); // Fn call must not be inlined
 
-inline std::u16string utf8to16u(std::string_view source, uni::error& error)
-{
-    return utf8to16<char, char16_t>(source, error);
-}
-inline std::string utf16to8(std::u16string_view source, uni::error& error)
-{
-    return utf16to8<char16_t, char>(source, error);
-}
-inline std::u32string utf8to32u(std::string_view source, uni::error& error)
-{
-    return utf8to32<char, char32_t>(source, error);
-}
-inline std::string utf32to8(std::u32string_view source, uni::error& error)
-{
-    return utf32to8<char32_t, char>(source, error);
-}
-inline std::u32string utf16to32u(std::u16string_view source, uni::error& error)
-{
-    return utf16to32<char16_t, char32_t>(source, error);
-}
-inline std::u16string utf32to16u(std::u32string_view source, uni::error& error)
-{
-    return utf32to16<char32_t, char16_t>(source, error);
-}
+            return *this;
+        }
+        uaiw_constexpr nfkc operator++(int)
+        {
+            nfkc tmp = *this;
+            operator++();
+            return tmp;
+        }
+        friend uaiw_constexpr bool operator==(const nfkc& x, const nfkc& y) { return x.stream_end == y.stream_end; }
+        friend uaiw_constexpr bool operator!=(const nfkc& x, const nfkc& y) { return x.stream_end != y.stream_end; }
+        friend uaiw_constexpr bool operator==(const nfkc& x, una::sentinel_t) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(const nfkc& x, una::sentinel_t) { return !x.stream_end; }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const nfkc& x) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const nfkc& x) { return !x.stream_end; }
+    };
 
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring utf8to16(std::string_view source, uni::error& error)
-{
-    return utf8to16<char, wchar_t>(source, error);
-}
-inline std::string utf16to8(std::wstring_view source, uni::error& error)
-{
-    return utf16to8<wchar_t, char>(source, error);
-}
-inline std::u32string utf16to32u(std::wstring_view source, uni::error& error)
-{
-    return utf16to32<wchar_t, char32_t>(source, error);
-}
-inline std::wstring utf32to16(std::u32string_view source, uni::error& error)
-{
-    return utf32to16<char32_t, wchar_t>(source, error);
-}
-#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
-inline std::wstring utf8to32(std::string_view source, uni::error& error)
-{
-    return utf8to32<char, wchar_t>(source, error);
-}
-inline std::string utf32to8(std::wstring_view source, uni::error& error)
-{
-    return utf32to8<wchar_t, char>(source, error);
-}
-inline std::wstring utf16to32(std::u16string_view source, uni::error& error)
-{
-    return utf16to32<char16_t, wchar_t>(source, error);
-}
-inline std::u16string utf32to16u(std::wstring_view source, uni::error& error)
-{
-    return utf32to16<wchar_t, char16_t>(source, error);
-}
-#endif // WCHAR_MAX >= 0x7FFFFFFF
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
-} // namespace strict
+    Range range = Range{};
+    nfkc<iter_t, sent_t> cached_begin_value;
+    bool cached_begin = false;
 
-template<typename UTF8>
-bool is_valid_utf8(std::basic_string_view<UTF8> source)
-{
-    static_assert(std::is_integral_v<UTF8>);
+public:
+    uaiw_constexpr nfkc_view() = default;
+    uaiw_constexpr explicit nfkc_view(Range r) : range{std::move(r)} {}
+    //uaiw_constexpr Range base() const & { return range; }
+    //uaiw_constexpr Range base() && { return std::move(range); }
+    uaiw_constexpr auto begin()
+    {
+        if (cached_begin)
+            return cached_begin_value;
 
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_is_valid_utf8(source.data(), source.data() + source.size(), nullptr);
-#else
-    return detail::impl_is_valid_utf8(source.cbegin(), source.cend(), nullptr);
-#endif
-}
+        cached_begin_value = nfkc<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
+        cached_begin = true;
 
-template<typename UTF16>
-bool is_valid_utf16(std::basic_string_view<UTF16> source)
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+        return cached_begin_value;
+    }
+    uaiw_constexpr auto end()
+    {
+        return una::sentinel;
+    }
+    //uaiw_constexpr bool empty() { return begin() == end(); }
+    //explicit uaiw_constexpr operator bool() { return !empty(); }
+};
 
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_is_valid_utf16(source.data(), source.data() + source.size(), nullptr);
-#else
-    return detail::impl_is_valid_utf16(source.cbegin(), source.cend(), nullptr);
-#endif
-}
+template<class Range>
+class nfkd_view : public detail::rng::view_base
+{
+private:
+    template<class Iter, class Sent>
+    class nfkd
+    {
+        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
+                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
+                      "norm::nfkd view requires char32_t range");
 
-template<typename UTF32>
-bool is_valid_utf32(std::basic_string_view<UTF32> source)
-{
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+    private:
+        nfkd_view* parent = nullptr;
+        Iter it_pos = Iter{};
 
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_is_valid_utf32(source.data(), source.data() + source.size(), nullptr);
-#else
-    return detail::impl_is_valid_utf32(source.cbegin(), source.cend(), nullptr);
-#endif
-}
+        bool stream_end = false;
 
-template<typename UTF8>
-bool is_valid_utf8(std::basic_string_view<UTF8> source, uni::error& error)
-{
-    static_assert(std::is_integral_v<UTF8>);
+        detail::type_codept codepoint = 0;
+        detail::impl_norm_iter_state state{};
 
-    size_t err = detail::impl_npos;
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    bool ret = detail::impl_is_valid_utf8(source.data(), source.data() + source.size(), &err);
-#else
-    bool ret = detail::impl_is_valid_utf8(source.cbegin(), source.cend(), &err);
-#endif
-    error = uni::error{!ret, err};
+        uaiw_constexpr void iter_func_norm_nfkd()
+        {
+            if (!detail::inline_norm_iter_ready(&state))
+                while (it_pos != std::end(parent->range) && !detail::inline_norm_iter_nfkd(&state, *it_pos++));
+            if (!detail::inline_norm_iter_next_decomp(&state, &codepoint))
+                stream_end = true;
+        }
 
-    return ret;
-}
+    public:
+        using iterator_category = std::input_iterator_tag;
+        using value_type        = char32_t;
+        using pointer           = void;
+        using reference         = char32_t;
+        using difference_type   = std::ptrdiff_t;
 
-template<typename UTF16>
-bool is_valid_utf16(std::basic_string_view<UTF16> source, uni::error& error)
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+        uaiw_constexpr nfkd() = default;
+        uaiw_constexpr explicit nfkd(nfkd_view& p, Iter begin, Sent) : parent{std::addressof(p)}, it_pos{begin}
+        {
+            detail::impl_norm_iter_state_reset(&state);
 
-    size_t err = detail::impl_npos;
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    bool ret = detail::impl_is_valid_utf16(source.data(), source.data() + source.size(), &err);
-#else
-    bool ret = detail::impl_is_valid_utf16(source.cbegin(), source.cend(), &err);
-#endif
-    error = uni::error{!ret, err};
+            iter_func_norm_nfkd(); // Fn call must not be inlined
+        }
+        uaiw_constexpr reference operator*() const noexcept { return codepoint; }
+        uaiw_constexpr nfkd& operator++()
+        {
+            iter_func_norm_nfkd(); // Fn call must not be inlined
 
-    return ret;
-}
+            return *this;
+        }
+        uaiw_constexpr nfkd operator++(int)
+        {
+            nfkd tmp = *this;
+            operator++();
+            return tmp;
+        }
+        friend uaiw_constexpr bool operator==(const nfkd& x, const nfkd& y) { return x.stream_end == y.stream_end; }
+        friend uaiw_constexpr bool operator!=(const nfkd& x, const nfkd& y) { return x.stream_end != y.stream_end; }
+        friend uaiw_constexpr bool operator==(const nfkd& x, una::sentinel_t) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(const nfkd& x, una::sentinel_t) { return !x.stream_end; }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const nfkd& x) { return x.stream_end; }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const nfkd& x) { return !x.stream_end; }
+    };
 
-template<typename UTF32>
-bool is_valid_utf32(std::basic_string_view<UTF32> source, uni::error& error)
-{
-    static_assert(std::is_integral_v<UTF32> && sizeof(UTF32) >= sizeof(char32_t));
+    using iter_t = detail::rng::iterator_t<Range>;
+    using sent_t = detail::rng::sentinel_t<Range>;
 
-    size_t err = detail::impl_npos;
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    bool ret = detail::impl_is_valid_utf32(source.data(), source.data() + source.size(), &err);
-#else
-    bool ret = detail::impl_is_valid_utf32(source.cbegin(), source.cend(), &err);
-#endif
-    error = uni::error{!ret, err};
+    Range range = Range{};
+    nfkd<iter_t, sent_t> cached_begin_value;
+    bool cached_begin = false;
 
-    return ret;
-}
+public:
+    uaiw_constexpr nfkd_view() = default;
+    uaiw_constexpr explicit nfkd_view(Range r) : range{std::move(r)} {}
+    //uaiw_constexpr Range base() const & { return range; }
+    //uaiw_constexpr Range base() && { return std::move(range); }
+    uaiw_constexpr auto begin()
+    {
+        if (cached_begin)
+            return cached_begin_value;
 
-inline bool is_valid_utf8(std::string_view source)
+        cached_begin_value = nfkd<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
+        cached_begin = true;
+
+        return cached_begin_value;
+    }
+    uaiw_constexpr auto end()
+    {
+        return una::sentinel;
+    }
+    //uaiw_constexpr bool empty() { return begin() == end(); }
+    //explicit uaiw_constexpr operator bool() { return !empty(); }
+};
+
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+template<class Range>
+nfc_view(Range&&) -> nfc_view<views::all_t<Range>>;
+template<class Range>
+nfd_view(Range&&) -> nfd_view<views::all_t<Range>>;
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+template<class Range>
+nfkc_view(Range&&) -> nfkc_view<views::all_t<Range>>;
+template<class Range>
+nfkd_view(Range&&) -> nfkd_view<views::all_t<Range>>;
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+} // namespace ranges::norm
+
+namespace detail::rng {
+
+/* NFC_VIEW */
+
+struct adaptor_nfc
 {
-    return is_valid_utf8<char>(source);
-}
-inline bool is_valid_utf16(std::u16string_view source)
+    template<class R>
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::norm::nfc_view{std::forward<R>(r)}; }
+};
+template<class R>
+uaiw_constexpr auto operator|(R&& r, const adaptor_nfc& a) { return a(std::forward<R>(r)); }
+
+/* NFD_VIEW */
+
+struct adaptor_nfd
 {
-    return is_valid_utf16<char16_t>(source);
-}
-inline bool is_valid_utf32(std::u32string_view source)
+    template<class R>
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::norm::nfd_view{std::forward<R>(r)}; }
+};
+template<class R>
+uaiw_constexpr auto operator|(R&& r, const adaptor_nfd& a) { return a(std::forward<R>(r)); }
+
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+
+/* NFKC_VIEW */
+
+struct adaptor_nfkc
 {
-    return is_valid_utf32<char32_t>(source);
-}
-inline bool is_valid_utf8(std::string_view source, uni::error& error)
+    template<class R>
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::norm::nfkc_view{std::forward<R>(r)}; }
+};
+template<class R>
+uaiw_constexpr auto operator|(R&& r, const adaptor_nfkc& a) { return a(std::forward<R>(r)); }
+
+/* NFKD_VIEW */
+
+struct adaptor_nfkd
 {
-    return is_valid_utf8<char>(source, error);
-}
-inline bool is_valid_utf16(std::u16string_view source, uni::error& error)
-{
-    return is_valid_utf16<char16_t>(source, error);
-}
-inline bool is_valid_utf32(std::u32string_view source, uni::error& error)
-{
-    return is_valid_utf32<char32_t>(source, error);
-}
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline bool is_valid_utf16(std::wstring_view source)
-{
-    return is_valid_utf16<wchar_t>(source);
-}
-inline bool is_valid_utf16(std::wstring_view source, uni::error& error)
-{
-    return is_valid_utf16<wchar_t>(source, error);
-}
-#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
-inline bool is_valid_utf32(std::wstring_view source)
-{
-    return is_valid_utf32<wchar_t>(source);
-}
-inline bool is_valid_utf32(std::wstring_view source, uni::error& error)
-{
-    return is_valid_utf32<wchar_t>(source, error);
-}
-#endif // WCHAR_MAX >= 0x7FFFFFFF
+    template<class R>
+    uaiw_constexpr auto operator()(R&& r) const
+    { return ranges::norm::nfkd_view{std::forward<R>(r)}; }
+};
+template<class R>
+uaiw_constexpr auto operator|(R&& r, const adaptor_nfkd& a) { return a(std::forward<R>(r)); }
+
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+} // namespace detail::rng
+
+namespace ranges::views::norm {
+
+inline constexpr detail::rng::adaptor_nfc nfc;
+inline constexpr detail::rng::adaptor_nfd nfd;
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+inline constexpr detail::rng::adaptor_nfkc nfkc;
+inline constexpr detail::rng::adaptor_nfkd nfkd;
+#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+
+} // namespace ranges::views::norm
+
+namespace views = ranges::views;
+
+} // namespace una
 
 
-#ifdef __cpp_lib_char8_t
-
-inline std::u16string utf8to16u(std::u8string_view source)
-{
-    return utf8to16<char8_t, char16_t>(source);
-}
-inline std::u8string utf16to8u(std::u16string_view source)
-{
-    return utf16to8<char16_t, char8_t>(source);
-}
-inline std::u32string utf8to32u(std::u8string_view source)
-{
-    return utf8to32<char8_t, char32_t>(source);
-}
-inline std::u8string utf32to8u(std::u32string_view source)
-{
-    return utf32to8<char32_t, char8_t>(source);
-}
-
-inline bool is_valid_utf8(std::u8string_view source)
-{
-    return is_valid_utf8<char8_t>(source);
-}
-inline bool is_valid_utf8(std::u8string_view source, uni::error& error)
-{
-    return is_valid_utf8<char8_t>(source, error);
-}
-
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring utf8to16(std::u8string_view source)
-{
-    return utf8to16<char8_t, wchar_t>(source);
-}
-inline std::u8string utf16to8u(std::wstring_view source)
-{
-    return utf16to8<wchar_t, char8_t>(source);
-}
-#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
-inline std::wstring utf8to32(std::u8string_view source)
-{
-    return utf8to32<char8_t, wchar_t>(source);
-}
-inline std::u8string utf32to8u(std::wstring_view source)
-{
-    return utf32to8<wchar_t, char8_t>(source);
-}
-#endif // WCHAR_MAX >= 0x7FFFFFFF
-
-namespace strict {
-
-inline std::u16string utf8to16u(std::u8string_view source, uni::error& error)
-{
-    return utf8to16<char8_t, char16_t>(source, error);
-}
-inline std::u8string utf16to8u(std::u16string_view source, uni::error& error)
-{
-    return utf16to8<char16_t, char8_t>(source, error);
-}
-inline std::u32string utf8to32u(std::u8string_view source, uni::error& error)
-{
-    return utf8to32<char8_t, char32_t>(source, error);
-}
-inline std::u8string utf32to8u(std::u32string_view source, uni::error& error)
-{
-    return utf32to8<char32_t, char8_t>(source, error);
-}
-
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring utf8to16(std::u8string_view source, uni::error& error)
-{
-    return utf8to16<char8_t, wchar_t>(source, error);
-}
-inline std::u8string utf16to8u(std::wstring_view source, uni::error& error)
-{
-    return utf16to8<wchar_t, char8_t>(source, error);
-}
-#elif WCHAR_MAX >= 0x7FFFFFFF // 32-bit wchar_t
-inline std::wstring utf8to32(std::u8string_view source, uni::error& error)
-{
-    return utf8to32<char8_t, wchar_t>(source, error);
-}
-inline std::u8string utf32to8u(std::wstring_view source, uni::error& error)
-{
-    return utf32to8<wchar_t, char8_t>(source, error);
-}
-#endif // WCHAR_MAX >= 0x7FFFFFFF
-
-} // namespace strict
-
-#endif // __cpp_lib_char8_t
-
-} // namespace uni
-
-
-// AMALGAMATION: uni_algo/break_grapheme.h
+// AMALGAMATION: uni_algo/ranges_grapheme.h
 
 
 #ifdef UNI_ALGO_DISABLE_BREAK_GRAPHEME
 #error "Break Grapheme module is disabled via define UNI_ALGO_DISABLE_BREAK_GRAPHEME"
 #endif
 
-#include <type_traits>
+#include <string_view>
 #include <cassert>
 
 //!#include "config.h"
 //!#include "version.h"
+//!#include "internal/safe_layer.h"
 //!#include "internal/ranges_core.h"
 
 //!#include "impl/impl_iter.h"
 //!#include "impl/impl_break_grapheme.h"
 
-namespace uni {
+namespace una {
 
 namespace ranges::grapheme {
 
@@ -58970,9 +62169,9 @@ private:
 
     private:
         utf8_view* parent = nullptr;
-        Iter it_begin;
-        Iter it_pos;
-        Iter it_next;
+        Iter it_begin = Iter{};
+        Iter it_pos = Iter{};
+        Iter it_next = Iter{};
 
         detail::impl_break_grapheme_state state{};
 
@@ -59023,8 +62222,8 @@ private:
         using reference         = value_type;
         using difference_type   = detail::rng::iter_difference_t<Iter>;
 
-        utf8() = default;
-        explicit utf8(utf8_view& p, Iter begin, Sent end)
+        uaiw_constexpr utf8() = default;
+        uaiw_constexpr explicit utf8(utf8_view& p, Iter begin, Sent end)
             : parent{std::addressof(p)}, it_begin{begin}, it_pos{begin}, it_next{begin}
         {
             if (begin == end)
@@ -59065,15 +62264,15 @@ private:
             operator--();
             return tmp;
         }
-        friend bool operator==(const utf8& x, const utf8& y) { return (x.it_begin == y.it_begin); }
-        friend bool operator!=(const utf8& x, const utf8& y) { return (x.it_begin != y.it_begin); }
+        friend uaiw_constexpr bool operator==(const utf8& x, const utf8& y) { return (x.it_begin == y.it_begin); }
+        friend uaiw_constexpr bool operator!=(const utf8& x, const utf8& y) { return (x.it_begin != y.it_begin); }
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const utf8& x) { return x.it_begin == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const utf8& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const utf8& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const utf8& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const utf8& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const utf8& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const utf8& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -59120,9 +62319,9 @@ private:
 
     private:
         utf16_view* parent = nullptr;
-        Iter it_begin;
-        Iter it_pos;
-        Iter it_next;
+        Iter it_begin = Iter{};
+        Iter it_pos = Iter{};
+        Iter it_next = Iter{};
 
         detail::impl_break_grapheme_state state{};
 
@@ -59173,8 +62372,8 @@ private:
         using reference         = value_type;
         using difference_type   = detail::rng::iter_difference_t<Iter>;
 
-        utf16() = default;
-        explicit utf16(utf16_view& p, Iter begin, Sent end)
+        uaiw_constexpr utf16() = default;
+        uaiw_constexpr explicit utf16(utf16_view& p, Iter begin, Sent end)
             : parent{std::addressof(p)}, it_begin{begin}, it_pos{begin}, it_next{begin}
         {
             if (begin == end)
@@ -59215,15 +62414,15 @@ private:
             operator--();
             return tmp;
         }
-        friend bool operator==(const utf16& x, const utf16& y) { return (x.it_begin == y.it_begin); }
-        friend bool operator!=(const utf16& x, const utf16& y) { return (x.it_begin != y.it_begin); }
+        friend uaiw_constexpr bool operator==(const utf16& x, const utf16& y) { return (x.it_begin == y.it_begin); }
+        friend uaiw_constexpr bool operator!=(const utf16& x, const utf16& y) { return (x.it_begin != y.it_begin); }
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const utf16& x) { return x.it_begin == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const utf16& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const utf16& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const utf16& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const utf16& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const utf16& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const utf16& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -59298,27 +62497,28 @@ inline constexpr detail::rng::adaptor_grapheme_utf16 utf16;
 
 namespace views = ranges::views;
 
-} // namespace uni
+} // namespace una
 
 
-// AMALGAMATION: uni_algo/break_word.h
+// AMALGAMATION: uni_algo/ranges_word.h
 
 
 #ifdef UNI_ALGO_DISABLE_BREAK_WORD
 #error "Break Word module is disabled via define UNI_ALGO_DISABLE_BREAK_WORD"
 #endif
 
-#include <type_traits>
+#include <string_view>
 #include <cassert>
 
 //!#include "config.h"
 //!#include "version.h"
+//!#include "internal/safe_layer.h"
 //!#include "internal/ranges_core.h"
 
 //!#include "impl/impl_iter.h"
 //!#include "impl/impl_break_word.h"
 
-namespace uni {
+namespace una {
 
 namespace ranges {
 
@@ -59337,9 +62537,9 @@ private:
 
     private:
         utf8_view* parent = nullptr;
-        Iter it_begin;
-        Iter it_pos;
-        Iter it_next;
+        Iter it_begin = Iter{};
+        Iter it_pos = Iter{};
+        Iter it_next = Iter{};
         detail::type_codept word_prop = 0;
         detail::type_codept next_word_prop = 0;
 
@@ -59397,8 +62597,8 @@ private:
         using reference         = value_type;
         using difference_type   = detail::rng::iter_difference_t<Iter>;
 
-        utf8() = default;
-        explicit utf8(utf8_view& p, Iter begin, Sent end)
+        uaiw_constexpr utf8() = default;
+        uaiw_constexpr explicit utf8(utf8_view& p, Iter begin, Sent end)
             : parent{std::addressof(p)}, it_begin{begin}, it_pos{begin}, it_next{begin}
         {
             if (begin == end)
@@ -59448,15 +62648,15 @@ private:
             operator--();
             return tmp;
         }
-        friend bool operator==(const utf8& x, const utf8& y) { return (x.it_begin == y.it_begin); }
-        friend bool operator!=(const utf8& x, const utf8& y) { return (x.it_begin != y.it_begin); }
+        friend uaiw_constexpr bool operator==(const utf8& x, const utf8& y) { return (x.it_begin == y.it_begin); }
+        friend uaiw_constexpr bool operator!=(const utf8& x, const utf8& y) { return (x.it_begin != y.it_begin); }
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const utf8& x) { return x.it_begin == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const utf8& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const utf8& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const utf8& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const utf8& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const utf8& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const utf8& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -59503,9 +62703,9 @@ private:
 
     private:
         utf16_view* parent = nullptr;
-        Iter it_begin;
-        Iter it_pos;
-        Iter it_next;
+        Iter it_begin = Iter{};
+        Iter it_pos = Iter{};
+        Iter it_next = Iter{};
         detail::type_codept word_prop = 0;
         detail::type_codept next_word_prop = 0;
 
@@ -59563,8 +62763,8 @@ private:
         using reference         = value_type;
         using difference_type   = detail::rng::iter_difference_t<Iter>;
 
-        utf16() = default;
-        explicit utf16(utf16_view& p, Iter begin, Sent end)
+        uaiw_constexpr utf16() = default;
+        uaiw_constexpr explicit utf16(utf16_view& p, Iter begin, Sent end)
             : parent{std::addressof(p)}, it_begin{begin}, it_pos{begin}, it_next{begin}
         {
             if (begin == end)
@@ -59614,15 +62814,15 @@ private:
             operator--();
             return tmp;
         }
-        friend bool operator==(const utf16& x, const utf16& y) { return (x.it_begin == y.it_begin); }
-        friend bool operator!=(const utf16& x, const utf16& y) { return (x.it_begin != y.it_begin); }
+        friend uaiw_constexpr bool operator==(const utf16& x, const utf16& y) { return (x.it_begin == y.it_begin); }
+        friend uaiw_constexpr bool operator!=(const utf16& x, const utf16& y) { return (x.it_begin != y.it_begin); }
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const utf16& x) { return x.it_begin == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const utf16& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const utf16& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const utf16& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const utf16& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const utf16& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const utf16& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -59672,9 +62872,9 @@ private:
 
     private:
         utf8_view* parent = nullptr;
-        Iter it_begin;
-        Iter it_pos;
-        Iter it_next;
+        Iter it_begin = Iter{};
+        Iter it_pos = Iter{};
+        Iter it_next = Iter{};
         detail::type_codept word_prop = 0;
         detail::type_codept next_word_prop = 0;
 
@@ -59745,8 +62945,8 @@ private:
         using reference         = value_type;
         using difference_type   = detail::rng::iter_difference_t<Iter>;
 
-        utf8() = default;
-        explicit utf8(utf8_view& p, Iter begin, Sent end)
+        uaiw_constexpr utf8() = default;
+        uaiw_constexpr explicit utf8(utf8_view& p, Iter begin, Sent end)
             : parent{std::addressof(p)}, it_begin{begin}, it_pos{begin}, it_next{begin}
         {
             if (begin == end)
@@ -59787,15 +62987,15 @@ private:
             operator--();
             return tmp;
         }
-        friend bool operator==(const utf8& x, const utf8& y) { return (x.it_begin == y.it_begin); }
-        friend bool operator!=(const utf8& x, const utf8& y) { return (x.it_begin != y.it_begin); }
+        friend uaiw_constexpr bool operator==(const utf8& x, const utf8& y) { return (x.it_begin == y.it_begin); }
+        friend uaiw_constexpr bool operator!=(const utf8& x, const utf8& y) { return (x.it_begin != y.it_begin); }
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const utf8& x) { return x.it_begin == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const utf8& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const utf8& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const utf8& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const utf8& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const utf8& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const utf8& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const utf8& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -59842,9 +63042,9 @@ private:
 
     private:
         utf16_view* parent = nullptr;
-        Iter it_begin;
-        Iter it_pos;
-        Iter it_next;
+        Iter it_begin = Iter{};
+        Iter it_pos = Iter{};
+        Iter it_next = Iter{};
         detail::type_codept word_prop = 0;
         detail::type_codept next_word_prop = 0;
 
@@ -59915,8 +63115,8 @@ private:
         using reference         = value_type;
         using difference_type   = detail::rng::iter_difference_t<Iter>;
 
-        utf16() = default;
-        explicit utf16(utf16_view& p, Iter begin, Sent end)
+        uaiw_constexpr utf16() = default;
+        uaiw_constexpr explicit utf16(utf16_view& p, Iter begin, Sent end)
             : parent{std::addressof(p)}, it_begin{begin}, it_pos{begin}, it_next{begin}
         {
             if (begin == end)
@@ -59957,15 +63157,15 @@ private:
             operator--();
             return tmp;
         }
-        friend bool operator==(const utf16& x, const utf16& y) { return (x.it_begin == y.it_begin); }
-        friend bool operator!=(const utf16& x, const utf16& y) { return (x.it_begin != y.it_begin); }
+        friend uaiw_constexpr bool operator==(const utf16& x, const utf16& y) { return (x.it_begin == y.it_begin); }
+        friend uaiw_constexpr bool operator!=(const utf16& x, const utf16& y) { return (x.it_begin != y.it_begin); }
     private:
         static uaiw_constexpr bool friend_compare_sentinel(const utf16& x) { return x.it_begin == std::end(x.parent->range); }
     public:
-        friend uaiw_constexpr bool operator==(const utf16& x, uni::sentinel_t) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(const utf16& x, uni::sentinel_t) { return !friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const utf16& x) { return friend_compare_sentinel(x); }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(const utf16& x, una::sentinel_t) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(const utf16& x, una::sentinel_t) { return !friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator==(una::sentinel_t, const utf16& x) { return friend_compare_sentinel(x); }
+        friend uaiw_constexpr bool operator!=(una::sentinel_t, const utf16& x) { return !friend_compare_sentinel(x); }
     };
 
     using iter_t = detail::rng::iterator_t<Range>;
@@ -60078,2667 +63278,421 @@ inline constexpr detail::rng::adaptor_word_only_utf16 utf16;
 
 namespace views = ranges::views;
 
-} // namespace uni
+} // namespace una
 
 
-// AMALGAMATION: uni_algo/locale.h
+// AMALGAMATION: uni_algo/ext/ascii.h
 
 
-#include <type_traits>
-#include <cassert>
+#include <array>
 #include <string>
 #include <string_view>
 
-//!#include "config.h"
-//!#include "version.h"
+//!#include "../config.h"
+//!#include "../version.h"
+//!#include "../internal/search.h"
 
-//!#include "impl/impl_locale.h"
+namespace una::detail::ascii {
 
-// DESIGN:
-// Locale tags can contain too many values so using enum classes for them is no go.
-// So we use our own "enum strings" that are similar in usage:
-// uni::locale::language{"en"} instead of uni::locale::language::en
-// That allow us to use them with all possible language/script/region tags.
-// They are constexpr so it's possible to use them in all places
-// where enum classes can be used for example in switch case.
+template<typename T>
+inline constexpr std::array<T, 6> data_trim = {{' ','\t','\r','\n','\f','\v'}};
+template<typename T>
+inline constexpr std::basic_string_view<T> data_trim_view{data_trim<T>.data(), data_trim<T>.size()};
 
-namespace uni {
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
 
-// Forward declaration for system locale stuff
-#ifndef UNI_ALGO_DISABLE_SYSTEM_LOCALE
-#ifndef UNI_ALGO_STATIC_DATA
-class locale;
+// Generator in test/test_ascii.h
 
-namespace detail {
+inline constexpr const std::array<unsigned char, 128> data_collate_case = {{
+  1,   2,   3,   4,   5,   6,   7,   8,   9,  29,  30,  31,  32,  33,  10,  11,
+ 12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,
+ 34,  35,  36,  37,  66,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,
+ 67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  49,  50,  51,  52,  53,  54,
+ 55,  78,  80,  82,  84,  86,  88,  90,  92,  94,  96,  98, 100, 102, 104, 106,
+108, 110, 112, 114, 116, 118, 120, 122, 124, 126, 128,  56,  57,  58,  59,  60,
+ 61,  77,  79,  81,  83,  85,  87,  89,  91,  93,  95,  97,  99, 101, 103, 105,
+107, 109, 111, 113, 115, 117, 119, 121, 123, 125, 127,  62,  63,  64,  65,  28}};
 
-UNI_ALGO_DLL const uni::locale& locale_system();
-#ifdef UNI_ALGO_EXPERIMENTAL
-UNI_ALGO_DLL const uni::locale& locale_thread();
-UNI_ALGO_DLL void locale_thread_reinit();
-#endif // UNI_ALGO_EXPERIMENTAL
+inline constexpr const std::array<unsigned char, 128> data_collate_nocase = {{
+  1,   2,   3,   4,   5,   6,   7,   8,   9,  29,  30,  31,  32,  33,  10,  11,
+ 12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,
+ 34,  35,  36,  37,  66,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,
+ 67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  49,  50,  51,  52,  53,  54,
+ 55,  77,  79,  81,  83,  85,  87,  89,  91,  93,  95,  97,  99, 101, 103, 105,
+107, 109, 111, 113, 115, 117, 119, 121, 123, 125, 127,  56,  57,  58,  59,  60,
+ 61,  77,  79,  81,  83,  85,  87,  89,  91,  93,  95,  97,  99, 101, 103, 105,
+107, 109, 111, 113, 115, 117, 119, 121, 123, 125, 127,  62,  63,  64,  65,  28}};
 
-} // namespace detail
-#endif // UNI_ALGO_STATIC_DATA
-#endif // UNI_ALGO_DISABLE_SYSTEM_LOCALE
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
 
-class locale
+} // namespace una::detail::ascii
+
+// REMINDER: to move everything to namespace una
+// rename namespace unx to uni and remove all "using namespace una;" below.
+
+namespace unx {
+
+namespace codepoint {
+
+inline constexpr bool is_ascii(char32_t c)
 {
-public:
-    class language
-    {
-        friend class locale;
-    private:
-        // Use char32_t for value because that is what low-level uses
-        char32_t value = 0;
-        constexpr explicit language(char32_t v) : value{v} {}
-        constexpr void set_value(char32_t v) { value = v; }
-        constexpr char32_t get_value() const { return value; }
-    public:
-        constexpr language() = default;
-        template <std::size_t N>
-        constexpr explicit language(const char (&s)[N]) : value{detail::impl_locate_from_tag(s, N ? N - 1 : 0)} {}
-        uaiw_constexpr explicit language(std::string_view s) : value{detail::impl_locate_from_tag(s, s.size())} {}
+    return (c <= 0x7F) ? true : false;
+}
 
-        // Enable emplicit conversion to make this class work in switch case
-        // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
-        constexpr operator char32_t() const { return value; }
-
-        friend constexpr bool operator==(const language& x, const language& y) { return x.value == y.value; }
-        friend constexpr bool operator!=(const language& x, const language& y) { return x.value != y.value; }
-
-        // Remove comparison operators because implicit conversion made them
-        friend bool operator==(const language&, char32_t) = delete;
-        friend bool operator==(char32_t, const language&) = delete;
-        friend bool operator!=(const language&, char32_t) = delete;
-        friend bool operator!=(char32_t, const language&) = delete;
-        friend bool operator<=(const language&, char32_t) = delete;
-        friend bool operator<=(char32_t, const language&) = delete;
-        friend bool operator>=(const language&, char32_t) = delete;
-        friend bool operator>=(char32_t, const language&) = delete;
-        friend bool operator<(const language&, char32_t) = delete;
-        friend bool operator<(char32_t, const language&) = delete;
-        friend bool operator>(const language&, char32_t) = delete;
-        friend bool operator>(char32_t, const language&) = delete;
-    };
-    class region
-    {
-        friend class locale;
-    private:
-        char32_t value = 0;
-        constexpr explicit region(char32_t v) : value{v} {}
-        constexpr void set_value(char32_t v) { value = v; }
-        constexpr char32_t get_value() const { return value; }
-    public:
-        constexpr region() = default;
-        template <std::size_t N>
-        constexpr explicit region(const char (&s)[N]) : value{detail::impl_locate_from_tag(s, N ? N - 1 : 0)} {}
-        uaiw_constexpr explicit region(std::string_view s) : value{detail::impl_locate_from_tag(s, s.size())} {}
-        // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
-        constexpr operator char32_t() const { return value; }
-
-        friend constexpr bool operator==(const region& x, const region& y) { return x.value == y.value; }
-        friend constexpr bool operator!=(const region& x, const region& y) { return x.value != y.value; }
-
-        friend bool operator==(const region&, char32_t) = delete;
-        friend bool operator==(char32_t, const region&) = delete;
-        friend bool operator!=(const region&, char32_t) = delete;
-        friend bool operator!=(char32_t, const region&) = delete;
-        friend bool operator<=(const region&, char32_t) = delete;
-        friend bool operator<=(char32_t, const region&) = delete;
-        friend bool operator>=(const region&, char32_t) = delete;
-        friend bool operator>=(char32_t, const region&) = delete;
-        friend bool operator<(const region&, char32_t) = delete;
-        friend bool operator<(char32_t, const region&) = delete;
-        friend bool operator>(const region&, char32_t) = delete;
-        friend bool operator>(char32_t, const region&) = delete;
-    };
-    class script
-    {
-        friend class locale;
-    private:
-        char32_t value = 0;
-        constexpr explicit script(char32_t v) : value{v} {}
-        constexpr void set_value(char32_t v) { value = v; }
-        constexpr char32_t get_value() const { return value; }
-    public:
-        constexpr script() = default;
-        template <std::size_t N>
-        constexpr explicit script(const char (&s)[N]) : value{detail::impl_locate_from_tag(s, N ? N - 1 : 0)} {}
-        uaiw_constexpr explicit script(std::string_view s) : value{detail::impl_locate_from_tag(s, s.size())} {}
-        // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
-        constexpr operator char32_t() const { return value; }
-
-        friend constexpr bool operator==(const script& x, const script& y) { return x.value == y.value; }
-        friend constexpr bool operator!=(const script& x, const script& y) { return x.value != y.value; }
-
-        friend bool operator==(const script&, char32_t) = delete;
-        friend bool operator==(char32_t, const script&) = delete;
-        friend bool operator!=(const script&, char32_t) = delete;
-        friend bool operator!=(char32_t, const script&) = delete;
-        friend bool operator<=(const script&, char32_t) = delete;
-        friend bool operator<=(char32_t, const script&) = delete;
-        friend bool operator>=(const script&, char32_t) = delete;
-        friend bool operator>=(char32_t, const script&) = delete;
-        friend bool operator<(const script&, char32_t) = delete;
-        friend bool operator<(char32_t, const script&) = delete;
-        friend bool operator>(const script&, char32_t) = delete;
-        friend bool operator>(char32_t, const script&) = delete;
-    };
-private:
-    language lang; //{detail::impl_locale_language_und};
-    script scpt; //{detail::impl_locale_script_Zzzz};
-    region regn; //{detail::impl_locale_region_ZZ};
-
-public:
-    constexpr locale() = default;
-    // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
-    constexpr locale(language l) : lang(l) {}
-    constexpr locale(language l, region s) : lang{l}, regn{s} {}
-    constexpr locale(language l, script s) : lang{l}, scpt{s} {}
-    constexpr locale(language l, script s, region r) : lang{l}, scpt{s}, regn{r} {}
-    constexpr language get_language() const { return lang; }
-    constexpr script get_script() const { return scpt; }
-    constexpr region get_region() const { return regn; }
-    constexpr bool is_empty() const
-    {
-        return lang.get_value() == 0 &&
-               scpt.get_value() == 0 &&
-               regn.get_value() == 0;
-    }
-#ifndef UNI_ALGO_DISABLE_SYSTEM_LOCALE
-#ifndef UNI_ALGO_STATIC_DATA
-    static locale system() { return detail::locale_system(); }
-#ifdef UNI_ALGO_EXPERIMENTAL
-    static locale thread() { return detail::locale_thread(); }
-    static void thread_reinit() { detail::locale_thread_reinit(); }
-#endif // UNI_ALGO_EXPERIMENTAL
-#endif // UNI_ALGO_STATIC_DATA
-#endif // UNI_ALGO_DISABLE_SYSTEM_LOCALE
-#ifdef UNI_ALGO_EXPERIMENTAL
-    constexpr void normalize()
-    {
-        lang.set_value(detail::impl_locale_norm_language(lang.get_value(), 0));
-        if (lang.get_value() == 0)
-        {
-            scpt.set_value(0);
-            regn.set_value(0);
-        }
-        scpt.set_value(detail::impl_locale_norm_script(scpt.get_value(), 0));
-        regn.set_value(detail::impl_locale_norm_region(regn.get_value(), 0));
-    }
-#endif // UNI_ALGO_EXPERIMENTAL
-    uaiw_constexpr std::string to_string() const
-    {
-        std::string result;
-        result.resize(4 + 1 + 4 + 1 + 4);
-
-        std::size_t size = 0;
-
-        size += detail::impl_locate_to_tag(lang.get_value(), result.begin() + static_cast<std::ptrdiff_t>(size));
-        if (/*size && */scpt.get_value())
-        {
-            /*if (size) */result[size++] = '-';
-            size += detail::impl_locate_to_tag(scpt.get_value(), result.begin() + static_cast<std::ptrdiff_t>(size));
-        }
-        if (/*size && */regn.get_value())
-        {
-            /*if (size) */result[size++] = '-';
-            size += detail::impl_locate_to_tag(regn.get_value(), result.begin() + static_cast<std::ptrdiff_t>(size));
-        }
-
-        result.resize(size);
-        return result;
-    }
-private:
-    template <typename T>
-    uaiw_constexpr void parse(std::basic_string_view<T> s)
-    {
-        // Examples:
-        // en-ZZ
-        // und-ZZ
-        // en-Zzzz-ZZ
-        // und-Zzzz-ZZ
-
-        if (s.size() < 2)
-            return;
-
-        bool has_lang = false;
-        bool has_scpt = false;
-        bool has_regn = false;
-
-        bool found = false;
-        for (std::size_t i = 0, prev = 0; i <= s.size(); ++i)
-        {
-            // Be aware that i <= s.size() so we parse last char too to simplify the algo
-            // don't forget to check that
-
-            if (i == s.size() || s[i] == '-' || s[i] == '_' || s[i] == '.')
-            {
-                if (found) // Multiple -_
-                    break;
-
-                std::size_t size = i - prev;
-
-                //std::cout << s.substr(prev, size) << '\n'; // Test
-
-                if (!has_lang)
-                {
-                    has_lang = true;
-                    if (size == 2 || size == 3)
-                        lang.set_value(detail::impl_locale_from_language(s.substr(prev, size), size, 0));
-                    else
-                        break;
-                }
-                else if (!has_scpt && size == 4)
-                {
-                    has_scpt = true;
-                    scpt.set_value(detail::impl_locale_from_script(s.substr(prev, size), size, 0));
-                }
-                else if (!has_regn)
-                {
-                    has_regn = true;
-                    if (size == 2 || size == 3)
-                        regn.set_value(detail::impl_locale_from_region(s.substr(prev, size), size, 0));
-                    break;
-                }
-
-                if (i != s.size() && s[i] == '.')
-                    break;
-
-                found = true;
-                prev = i;
-            }
-            else if (found)
-            {
-                found = false;
-                prev = i;
-            }
-        }
-    }
-public:
-    uaiw_constexpr explicit locale(std::string_view s) { parse<char>(s); }
-    uaiw_constexpr explicit locale(std::wstring_view s) { parse<wchar_t>(s); }
-
-    friend constexpr bool operator==(const locale& x, const locale& y)
-    {
-        return x.lang == y.lang &&
-               x.scpt == y.scpt &&
-               x.regn == y.regn;
-    }
-    friend constexpr bool operator!=(const locale& x, const locale& y) noexcept { return !(x == y); }
-    friend constexpr bool operator==(const language& x, const locale& y) { return x == y.lang; }
-    friend constexpr bool operator!=(const language& x, const locale& y) { return x != y.lang; }
-    friend constexpr bool operator==(const locale& x, const language& y) { return x.lang == y; }
-    friend constexpr bool operator!=(const locale& x, const language& y) { return x.lang != y; }
-    friend constexpr bool operator==(const region& x, const locale& y) { return x == y.regn; }
-    friend constexpr bool operator!=(const region& x, const locale& y) { return x != y.regn; }
-    friend constexpr bool operator==(const locale& x, const region& y) { return x.regn == y; }
-    friend constexpr bool operator!=(const locale& x, const region& y) { return x.regn != y; }
-    friend constexpr bool operator==(const script& x, const locale& y) { return x == y.scpt; }
-    friend constexpr bool operator!=(const script& x, const locale& y) { return x != y.scpt; }
-    friend constexpr bool operator==(const locale& x, const script& y) { return x.scpt == y; }
-    friend constexpr bool operator!=(const locale& x, const script& y) { return x.scpt != y; }
-};
-
-} // namespace uni
-
-
-// AMALGAMATION: uni_algo/case.h
-
-
-#ifdef UNI_ALGO_DISABLE_CASE
-#error "Case module is disabled via define UNI_ALGO_DISABLE_CASE"
-#endif
-
-#include <type_traits>
-#include <string>
-#include <string_view>
-#include <cassert>
-
-//!#include "config.h"
-//!#include "version.h"
-
-// Clang-Tidy thinks that locale.h form C is included here
-// NOLINTNEXTLINE(modernize-deprecated-headers, hicpp-deprecated-headers)
-//!#include "locale.h"
-
-//!#include "impl/impl_case.h"
-#ifndef UNI_ALGO_DISABLE_FULL_CASE
-//!#include "impl/impl_case_locale.h"
-#endif
-
-namespace uni {
-
-class search
+inline constexpr bool is_ascii_uppercase(char32_t c)
 {
-public:
-    search() noexcept = default;
-    explicit search(bool f, std::size_t p, std::size_t e) noexcept
-        : found(f), position(p), end_position(e) {}
-    explicit operator bool() const noexcept { return found; }
-    void reset() { found = false; position = detail::impl_npos; end_position = detail::impl_npos; }
-    std::size_t pos() const noexcept { assert(found); return position; }
-    std::size_t end_pos() const noexcept { assert(found); return end_position; }
-private:
-    bool found = false;
-    std::size_t position = detail::impl_npos;
-    std::size_t end_position = detail::impl_npos;
-};
+    return (c >= U'A' && c <= U'Z') ? true : false;
+}
 
-namespace detail {
-
-template<typename Dst, typename Alloc, typename Src, size_t SizeX,
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FnMap)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer, int, char32_t)>
-#else
-    size_t(*FnMap)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator, int, char32_t)>
-#endif
-Dst t_map(const Alloc& alloc, Src src, int mode, char32_t loc = 0)
+inline constexpr bool is_ascii_lowercase(char32_t c)
 {
-    Dst dst{alloc};
+    return (c >= U'a' && c <= U'z') ? true : false;
+}
 
-    std::size_t length = src.size();
+inline constexpr char32_t to_ascii_uppercase(char32_t c)
+{
+    return is_ascii_lowercase(c) ? c ^ 32 : c;
+}
 
-    if (length)
+inline constexpr char32_t to_ascii_lowercase(char32_t c)
+{
+    return is_ascii_uppercase(c) ? c ^ 32 : c;
+}
+
+} // namespace codepoint
+
+namespace cases {
+
+template<typename T, typename Alloc = std::allocator<T>>
+uaiw_constexpr std::basic_string<T, std::char_traits<T>, Alloc>
+to_lowercase_ascii(std::basic_string_view<T> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<T>);
+
+    std::basic_string<T, std::char_traits<T>, Alloc> dst{source, alloc};
+
+    for (T& c : dst)
     {
-        if (length > dst.max_size() / SizeX) // Overflow protection
-        {
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
-            throw std::bad_alloc();
-#else
-            std::abort();
-#endif
-        }
-
-        dst.resize(length * SizeX);
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        dst.resize(FnMap(src.data(), src.data() + src.size(), dst.data(), mode, loc));
-#else
-        dst.resize(FnMap(src.cbegin(), src.cend(), dst.begin(), mode, loc));
-#endif
-#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
-        dst.shrink_to_fit();
-#endif
+        if (c >= 'A' && c <= 'Z')
+            c ^= 32;
     }
 
     return dst;
 }
 
-} // namespace detail
-
-namespace cases {
-
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_lowercase_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+template<typename T, typename Alloc = std::allocator<T>>
+uaiw_constexpr std::basic_string<T, std::char_traits<T>, Alloc>
+to_uppercase_ascii(std::basic_string_view<T> source, const Alloc& alloc = Alloc())
 {
-    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<T>);
 
-    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
-            detail::impl_case_map_mode_lowercase);
-}
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_lowercase_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+    std::basic_string<T, std::char_traits<T>, Alloc> dst{source, alloc};
 
-    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
-            detail::impl_case_map_mode_lowercase);
-}
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_uppercase_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
+    for (T& c : dst)
+    {
+        if (c >= 'a' && c <= 'z')
+            c ^= 32;
+    }
 
-    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
-            detail::impl_case_map_mode_uppercase);
-}
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_uppercase_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
-            detail::impl_case_map_mode_uppercase);
-}
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_casefold_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
-            detail::impl_case_map_mode_casefold);
-}
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_casefold_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
-            detail::impl_case_map_mode_casefold);
+    return dst;
 }
 
-inline std::string to_lowercase_utf8(std::string_view source)
+inline uaiw_constexpr std::string to_lowercase_ascii(std::string_view source)
 {
-    return to_lowercase_utf8<char>(source);
+    return to_lowercase_ascii<char>(source);
 }
-inline std::string to_uppercase_utf8(std::string_view source)
+inline uaiw_constexpr std::string to_uppercase_ascii(std::string_view source)
 {
-    return to_uppercase_utf8<char>(source);
+    return to_uppercase_ascii<char>(source);
 }
-inline std::string to_casefold_utf8(std::string_view source)
-{
-    return to_casefold_utf8<char>(source);
-}
-inline std::u16string to_lowercase_utf16(std::u16string_view source)
-{
-    return to_lowercase_utf16<char16_t>(source);
-}
-inline std::u16string to_uppercase_utf16(std::u16string_view source)
-{
-    return to_uppercase_utf16<char16_t>(source);
-}
-inline std::u16string to_casefold_utf16(std::u16string_view source)
-{
-    return to_casefold_utf16<char16_t>(source);
-}
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring to_lowercase_utf16(std::wstring_view source)
-{
-    return to_lowercase_utf16<wchar_t>(source);
-}
-inline std::wstring to_uppercase_utf16(std::wstring_view source)
-{
-    return to_uppercase_utf16<wchar_t>(source);
-}
-inline std::wstring to_casefold_utf16(std::wstring_view source)
-{
-    return to_casefold_utf16<wchar_t>(source);
-}
-#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
 
-#ifndef UNI_ALGO_DISABLE_FULL_CASE
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_lowercase_utf8(std::basic_string_view<UTF8> source, const uni::locale& locale, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(alloc, source,
-            detail::impl_case_map_mode_lowercase, static_cast<char32_t>(locale.get_language()));
-}
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_lowercase_utf16(std::basic_string_view<UTF16> source, const uni::locale& locale, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(alloc, source,
-            detail::impl_case_map_mode_lowercase, static_cast<char32_t>(locale.get_language()));
-}
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_uppercase_utf8(std::basic_string_view<UTF8> source, const uni::locale& locale, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(alloc, source,
-            detail::impl_case_map_mode_uppercase, static_cast<char32_t>(locale.get_language()));
-}
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_uppercase_utf16(std::basic_string_view<UTF16> source, const uni::locale& locale, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(alloc, source,
-            detail::impl_case_map_mode_uppercase, static_cast<char32_t>(locale.get_language()));
-}
-inline std::string to_lowercase_utf8(std::string_view source, const uni::locale& locale)
-{
-    return to_lowercase_utf8<char>(source, locale);
-}
-inline std::string to_uppercase_utf8(std::string_view source, const uni::locale& locale)
-{
-    return to_uppercase_utf8<char>(source, locale);
-}
-inline std::u16string to_lowercase_utf16(std::u16string_view source, const uni::locale& locale)
-{
-    return to_lowercase_utf16<char16_t>(source, locale);
-}
-inline std::u16string to_uppercase_utf16(std::u16string_view source, const uni::locale& locale)
-{
-    return to_uppercase_utf16<char16_t>(source, locale);
-}
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring to_lowercase_utf16(std::wstring_view source, const uni::locale& locale)
-{
-    return to_lowercase_utf16<wchar_t>(source, locale);
-}
-inline std::wstring to_uppercase_utf16(std::wstring_view source, const uni::locale& locale)
-{
-    return to_uppercase_utf16<wchar_t>(source, locale);
-}
-#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
-#endif // UNI_ALGO_DISABLE_FULL_CASE
-
-#ifndef UNI_ALGO_DISABLE_BREAK_WORD
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_titlecase_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_loc_utf8>(alloc, source,
-            detail::impl_case_map_mode_titlecase);
-}
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_titlecase_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_loc_utf16>(alloc, source,
-            detail::impl_case_map_mode_titlecase);
-}
-inline std::string to_titlecase_utf8(std::string_view source)
-{
-    return to_titlecase_utf8<char>(source);
-}
-inline std::u16string to_titlecase_utf16(std::u16string_view source)
-{
-    return to_titlecase_utf16<char16_t>(source);
-}
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring to_titlecase_utf16(std::wstring_view source)
-{
-    return to_titlecase_utf16<wchar_t>(source);
-}
-#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
-#ifndef UNI_ALGO_DISABLE_FULL_CASE
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_titlecase_utf8(std::basic_string_view<UTF8> source, const uni::locale& locale, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_map<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_case_map_utf8, detail::impl_case_map_locale_utf8>(alloc, source,
-            detail::impl_case_map_mode_titlecase, static_cast<char32_t>(locale.get_language()));
-}
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_titlecase_utf16(std::basic_string_view<UTF16> source, const uni::locale& locale, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_map<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_case_map_utf16, detail::impl_case_map_locale_utf16>(alloc, source,
-            detail::impl_case_map_mode_titlecase, static_cast<char32_t>(locale.get_language()));
-}
-inline std::string to_titlecase_utf8(std::string_view source, const uni::locale& locale)
-{
-    return to_titlecase_utf8<char>(source, locale);
-}
-inline std::u16string to_titlecase_utf16(std::u16string_view source, const uni::locale& locale)
-{
-    return to_titlecase_utf16<char16_t>(source, locale);
-}
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring to_titlecase_utf16(std::wstring_view source, const uni::locale& locale)
-{
-    return to_titlecase_utf16<wchar_t>(source, locale);
-}
-#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
-#endif // UNI_ALGO_DISABLE_FULL_CASE
-#endif // UNI_ALGO_DISABLE_BREAK_WORD
-
-} // namespace cases
+} // namespace case
 
 namespace casesens {
 
-template<typename UTF8>
-int compare_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
+template<typename T>
+uaiw_constexpr int compare_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
 {
-    static_assert(std::is_integral_v<UTF8>);
+    static_assert(std::is_integral_v<T>);
 
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_case_compare_utf8(string1.data(), string1.data() + string1.size(),
-                                          string2.data(), string2.data() + string2.size(), false);
-#else
-    return detail::impl_case_compare_utf8(string1.cbegin(), string1.cend(),
-                                          string2.cbegin(), string2.cend(), false);
-#endif
+    // The same as binary comparison
+
+    return string1.compare(string2);
 }
 
-template<typename UTF16>
-int compare_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
+template<typename T>
+uaiw_constexpr una::search search_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
 {
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+    static_assert(std::is_integral_v<T>);
 
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_case_compare_utf16(string1.data(), string1.data() + string1.size(),
-                                           string2.data(), string2.data() + string2.size(), false);
-#else
-    return detail::impl_case_compare_utf16(string1.cbegin(), string1.cend(),
-                                           string2.cbegin(), string2.cend(), false);
-#endif
-}
+    // The same as binary find
 
-#ifndef UNI_ALGO_DISABLE_COLLATE
-template<typename UTF8>
-int collate_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
-{
-    static_assert(std::is_integral_v<UTF8>);
+    std::size_t pos = string1.find(string2);
 
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_case_collate_utf8(string1.data(), string1.data() + string1.size(),
-                                          string2.data(), string2.data() + string2.size(), false);
-#else
-    return detail::impl_case_collate_utf8(string1.cbegin(), string1.cend(),
-                                          string2.cbegin(), string2.cend(), false);
-#endif
+    if (pos == std::string_view::npos)
+        return una::search{};
+
+    return una::search{true, pos, pos + string2.size()};
 }
 
-template<typename UTF16>
-int collate_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
+
+template<typename T>
+uaiw_constexpr int collate_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
 {
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+    using namespace una; // NOLINT(google-build-using-namespace)
 
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_case_collate_utf16(string1.data(), string1.data() + string1.size(),
-                                           string2.data(), string2.data() + string2.size(), false);
-#else
-    return detail::impl_case_collate_utf16(string1.cbegin(), string1.cend(),
-                                           string2.cbegin(), string2.cend(), false);
-#endif
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
+    static_assert(std::is_integral_v<T>);
 
-template<typename UTF8>
-uni::search search_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
-{
-    static_assert(std::is_integral_v<UTF8>);
+    // TODO: Maybe move to low-level
+    // See those & 0xFF it can cause false positive warnings that need to be silenced
+    // try to use the function with std::basic_string<long long> for example
+    // it least on the low-level we can simple silence this with casts
 
-    size_t pos = detail::impl_npos, end = detail::impl_npos;
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    bool ret = detail::impl_case_search_utf8(string1.data(), string1.data() + string1.size(),
-                                             string2.data(), string2.data() + string2.size(), false, &pos, &end);
-#else
-    bool ret = detail::impl_case_search_utf8(string1.cbegin(), string1.cend(),
-                                             string2.cbegin(), string2.cend(), false, &pos, &end);
-#endif
+    if (string1.size() > string2.size())
+        return 1;
+    if (string1.size() < string2.size())
+        return -1;
 
-    return uni::search{ret, pos, end};
-}
-template<typename UTF16>
+    for (std::size_t i = 0, size = string1.size(); i < size; ++i)
+    {
+        char32_t c1 = string1[i] & 0xFF;
+        char32_t c2 = string2[i] & 0xFF;
 
-uni::search search_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
+        if (c1 <= 0x7F)
+            c1 = detail::ascii::data_collate_case[c1];
 
-    size_t pos = detail::impl_npos, end = detail::impl_npos;
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    bool ret = detail::impl_case_search_utf16(string1.data(), string1.data() + string1.size(),
-                                              string2.data(), string2.data() + string2.size(), false, &pos, &end);
-#else
-    bool ret = detail::impl_case_search_utf16(string1.cbegin(), string1.cend(),
-                                              string2.cbegin(), string2.cend(), false, &pos, &end);
-#endif
+        if (c2 <= 0x7F)
+            c2 = detail::ascii::data_collate_case[c2];
 
-    return uni::search{ret, pos, end};
+        if (c1 != c2)
+            return (c1 < c2) ? -1 : 1;
+    }
+
+    return 0;
 }
 
-inline int compare_utf8(std::string_view string1, std::string_view string2)
-{
-    return compare_utf8<char>(string1, string2);
-}
-#ifndef UNI_ALGO_DISABLE_COLLATE
-inline int collate_utf8(std::string_view string1, std::string_view string2)
-{
-    return collate_utf8<char>(string1, string2);
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-inline uni::search search_utf8(std::string_view string1, std::string_view string2)
-{
-    return search_utf8<char>(string1, string2);
-}
-inline int compare_utf16(std::u16string_view string1, std::u16string_view string2)
-{
-    return compare_utf16<char16_t>(string1, string2);
-}
-#ifndef UNI_ALGO_DISABLE_COLLATE
-inline int collate_utf16(std::u16string_view string1, std::u16string_view string2)
-{
-    return collate_utf16<char16_t>(string1, string2);
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-inline uni::search search_utf16(std::u16string_view string1, std::u16string_view string2)
-{
-    return search_utf16<char16_t>(string1, string2);
-}
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline int compare_utf16(std::wstring_view string1, std::wstring_view string2)
-{
-    return compare_utf16<wchar_t>(string1, string2);
-}
-#ifndef UNI_ALGO_DISABLE_COLLATE
-inline int collate_utf16(std::wstring_view string1, std::wstring_view string2)
-{
-    return collate_utf16<wchar_t>(string1, string2);
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-inline uni::search search_utf16(std::wstring_view string1, std::wstring_view string2)
-{
-    return search_utf16<wchar_t>(string1, string2);
-}
-#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
 
-#ifdef UNI_ALGO_EXPERIMENTAL
-#ifndef UNI_ALGO_DISABLE_COLLATE
-template<typename UTF8, typename Alloc = std::allocator<char>>
-std::basic_string<char, std::char_traits<char>, Alloc>
-sortkey_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+inline uaiw_constexpr int compare_ascii(std::string_view string1, std::string_view string2)
 {
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_case_sortkey_utf8, detail::impl_case_sortkey_loc_utf8>(alloc, source, false);
+    return compare_ascii<char>(string1, string2);
 }
-template<typename UTF16, typename Alloc = std::allocator<char>>
-std::basic_string<char, std::char_traits<char>, Alloc>
-utf16_sortkey(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
+inline uaiw_constexpr int collate_ascii(std::string_view string1, std::string_view string2)
 {
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_case_sortkey_utf16, detail::impl_case_sortkey_loc_utf16>(alloc, source, false);
+    return collate_ascii<char>(string1, string2);
 }
-inline std::string sortkey_utf8(std::string_view source)
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_ascii(std::string_view string1, std::string_view string2)
 {
-    return sortkey_utf8<char>(source);
-}
-inline std::string utf16_sortkey(std::u16string_view source)
-{
-    return sortkey_utf16<char16_t>(source);
-}
-inline std::string sortkey_utf16(std::wstring_view source)
-{
-    return sortkey_utf16<wchar_t>(source);
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-#endif // UNI_ALGO_EXPERIMENTAL
-
-} // namespace casesens
-
-namespace caseless {
-
-template<typename UTF8>
-int compare_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_case_compare_utf8(string1.data(), string1.data() + string1.size(),
-                                          string2.data(), string2.data() + string2.size(), true);
-#else
-    return detail::impl_case_compare_utf8(string1.cbegin(), string1.cend(),
-                                          string2.cbegin(), string2.cend(), true);
-#endif
-}
-
-template<typename UTF16>
-int compare_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_case_compare_utf16(string1.data(), string1.data() + string1.size(),
-                                           string2.data(), string2.data() + string2.size(), true);
-#else
-    return detail::impl_case_compare_utf16(string1.cbegin(), string1.cend(),
-                                           string2.cbegin(), string2.cend(), true);
-#endif
-}
-
-#ifndef UNI_ALGO_DISABLE_COLLATE
-template<typename UTF8>
-int collate_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_case_collate_utf8(string1.data(), string1.data() + string1.size(),
-                                          string2.data(), string2.data() + string2.size(), true);
-#else
-    return detail::impl_case_collate_utf8(string1.cbegin(), string1.cend(),
-                                          string2.cbegin(), string2.cend(), true);
-#endif
-}
-
-template<typename UTF16>
-int collate_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_case_collate_utf16(string1.data(), string1.data() + string1.size(),
-                                           string2.data(), string2.data() + string2.size(), true);
-#else
-    return detail::impl_case_collate_utf16(string1.cbegin(), string1.cend(),
-                                           string2.cbegin(), string2.cend(), true);
-#endif
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-
-template<typename UTF8>
-uni::search search_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2)
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    size_t pos = detail::impl_npos, end = detail::impl_npos;
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    bool ret = detail::impl_case_search_utf8(string1.data(), string1.data() + string1.size(),
-                                             string2.data(), string2.data() + string2.size(), true, &pos, &end);
-#else
-    bool ret = detail::impl_case_search_utf8(string1.cbegin(), string1.cend(),
-                                             string2.cbegin(), string2.cend(), true, &pos, &end);
-#endif
-
-    return uni::search{ret, pos, end};
-}
-
-template<typename UTF16>
-uni::search search_utf16(std::basic_string_view<UTF16> string1, std::basic_string_view<UTF16> string2)
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    size_t pos = detail::impl_npos, end = detail::impl_npos;
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    bool ret = detail::impl_case_search_utf16(string1.data(), string1.data() + string1.size(),
-                                              string2.data(), string2.data() + string2.size(), true, &pos, &end);
-#else
-    bool ret = detail::impl_case_search_utf16(string1.cbegin(), string1.cend(),
-                                              string2.cbegin(), string2.cend(), true, &pos, &end);
-#endif
-
-    return uni::search{ret, pos, end};
-}
-
-inline int compare_utf8(std::string_view string1, std::string_view string2)
-{
-    return compare_utf8<char>(string1, string2);
-}
-#ifndef UNI_ALGO_DISABLE_COLLATE
-inline int collate_utf8(std::string_view string1, std::string_view string2)
-{
-    return collate_utf8<char>(string1, string2);
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-inline uni::search search_utf8(std::string_view string1, std::string_view string2)
-{
-    return search_utf8<char>(string1, string2);
-}
-inline int compare_utf16(std::u16string_view string1, std::u16string_view string2)
-{
-    return compare_utf16<char16_t>(string1, string2);
-}
-#ifndef UNI_ALGO_DISABLE_COLLATE
-inline int collate_utf16(std::u16string_view string1, std::u16string_view string2)
-{
-    return collate_utf16<char16_t>(string1, string2);
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-inline uni::search search_utf16(std::u16string_view string1, std::u16string_view string2)
-{
-    return search_utf16<char16_t>(string1, string2);
-}
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline int compare_utf16(std::wstring_view string1, std::wstring_view string2)
-{
-    return compare_utf16<wchar_t>(string1, string2);
-}
-#ifndef UNI_ALGO_DISABLE_COLLATE
-inline int collate_utf16(std::wstring_view string1, std::wstring_view string2)
-{
-    return collate_utf16<wchar_t>(string1, string2);
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-inline uni::search search_utf16(std::wstring_view string1, std::wstring_view string2)
-{
-    return search_utf16<wchar_t>(string1, string2);
-}
-#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
-
-#ifdef UNI_ALGO_EXPERIMENTAL
-
-#ifndef UNI_ALGO_DISABLE_COLLATE
-template<typename UTF8, typename Alloc = std::allocator<char>>
-std::basic_string<char, std::char_traits<char>, Alloc>
-sortkey_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_case_sortkey_utf8, detail::impl_case_sortkey_loc_utf8>(alloc, source, true);
-}
-template<typename UTF16, typename Alloc = std::allocator<char>>
-std::basic_string<char, std::char_traits<char>, Alloc>
-sortkey_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_map<std::basic_string<char, std::char_traits<char>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_case_sortkey_utf16, detail::impl_case_sortkey_loc_utf16>(alloc, source, true);
-}
-inline std::string sortkey_utf8(std::string_view source)
-{
-    return sortkey_utf8<char>(source);
-}
-inline std::string sortkey_utf16(std::u16string_view source)
-{
-    return sortkey_utf16<char16_t>(source);
-}
-inline std::string sortkey_utf16(std::wstring_view source)
-{
-    return sortkey_utf16<wchar_t>(source);
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-
-template<typename UTF8>
-bool like_utf8(std::basic_string_view<UTF8> string1, std::basic_string_view<UTF8> string2, char32_t escape = 0)
-{
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_case_like_utf8(string1.data(), string1.data() + string1.size(),
-                                       string2.data(), string2.data() + string2.size(), true, '%', '_', escape);
-#else
-    return detail::impl_case_like_utf8(string1.cbegin(), string1.cend(),
-                                       string2.cbegin(), string2.cend(), true, '%', '_', escape);
-#endif
-}
-inline bool like_utf8(std::string_view string1, std::string_view string2, char32_t escape = 0)
-{
-    return like_utf8<char>(string1, string2, escape);
-}
-
-#endif // UNI_ALGO_EXPERIMENTAL
-
-} // namespace caseless
-
-#ifdef __cpp_lib_char8_t
-
-namespace cases {
-
-inline std::u8string to_lowercase_utf8(std::u8string_view source)
-{
-    return to_lowercase_utf8<char8_t>(source);
-}
-inline std::u8string to_uppercase_utf8(std::u8string_view source)
-{
-    return to_uppercase_utf8<char8_t>(source);
-}
-inline std::u8string to_casefold_utf8(std::u8string_view source)
-{
-    return to_casefold_utf8<char8_t>(source);
-}
-inline std::u8string to_lowercase_utf8(std::u8string_view source, const uni::locale& locale)
-{
-    return to_lowercase_utf8<char8_t>(source, locale);
-}
-inline std::u8string to_uppercase_utf8(std::u8string_view source, const uni::locale& locale)
-{
-    return to_uppercase_utf8<char8_t>(source, locale);
-}
-#ifndef UNI_ALGO_DISABLE_BREAK_WORD
-#ifndef UNI_ALGO_DISABLE_FULL_CASE
-inline std::u8string to_titlecase_utf8(std::u8string_view source)
-{
-    return to_titlecase_utf8<char8_t>(source);
-}
-inline std::u8string to_titlecase_utf8(std::u8string_view source, const uni::locale& locale)
-{
-    return to_titlecase_utf8<char8_t>(source, locale);
-}
-#endif // UNI_ALGO_DISABLE_FULL_CASE
-#endif // UNI_ALGO_DISABLE_BREAK_WORD
-
-} // namespace cases
-
-namespace casesens {
-
-inline int compare_utf8(std::u8string_view string1, std::u8string_view string2)
-{
-    return compare_utf8<char8_t>(string1, string2);
-}
-#ifndef UNI_ALGO_DISABLE_COLLATE
-inline int collate_utf8(std::u8string_view string1, std::u8string_view string2)
-{
-    return collate_utf8<char8_t>(string1, string2);
-}
-#endif // UNI_ALGO_DISABLE_COLLATE
-inline uni::search search_utf8(std::u8string_view string1, std::u8string_view string2)
-{
-    return search_utf8<char8_t>(string1, string2);
+    return search_ascii<char>(string1, string2);
 }
 
 } // namespace casesens
 
 namespace caseless {
 
-inline int compare_utf8(std::u8string_view string1, std::u8string_view string2)
+template<typename T>
+uaiw_constexpr int compare_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
 {
-    return compare_utf8<char8_t>(string1, string2);
+    static_assert(std::is_integral_v<T>);
+
+    // TODO: Maybe move to low-level
+
+    if (string1.size() < string2.size())
+        return -1;
+    if (string1.size() > string2.size())
+        return 1;
+
+    for (std::size_t i = 0, size = string1.size(); i < size; ++i)
+    {
+        T c1 = string1[i];
+        T c2 = string2[i];
+
+        if (c1 >= 'A' && c1 <= 'Z')
+            c1 ^= 32;
+
+        if (c2 >= 'A' && c2 <= 'Z')
+            c2 ^= 32;
+
+        if (c1 != c2)
+            return (c1 < c2) ? -1 : 1;
+    }
+
+    return 0;
 }
-#ifndef UNI_ALGO_DISABLE_COLLATE
-inline int collate_utf8(std::u8string_view string1, std::u8string_view string2)
+
+template<typename T>
+uaiw_constexpr una::search search_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
 {
-    return collate_utf8<char8_t>(string1, string2);
+    static_assert(std::is_integral_v<T>);
+
+    // TODO: Maybe move to low-level
+    // See comment in casesens::collate_ascii above
+
+    std::size_t m = string2.size();
+    std::size_t n = string1.size();
+
+    if (m > n)
+        return una::search{};
+
+    for (std::size_t i = 0; i <= n - m; ++i)
+    {
+        std::size_t j = 0;
+
+        for (j = 0; j < m; ++j)
+        {
+            T c1 = string1[i + j];
+            T c2 = string2[j];
+
+            if (c1 >= 'A' && c1 <= 'Z')
+                c1 ^= 32;
+
+            if (c2 >= 'A' && c2 <= 'Z')
+                c2 ^= 32;
+
+            if (c1 != c2)
+                break;
+        }
+
+        if (j == m)
+            return una::search{true, i, i + m};
+    }
+
+    return una::search{};
 }
-#endif // UNI_ALGO_DISABLE_COLLATE
-inline uni::search search_utf8(std::u8string_view string1, std::u8string_view string2)
+
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
+
+template<typename T>
+uaiw_constexpr int collate_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
 {
-    return search_utf8<char8_t>(string1, string2);
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    static_assert(std::is_integral_v<T>);
+
+    // TODO: Maybe move to low-level
+
+    if (string1.size() < string2.size())
+        return -1;
+    if (string1.size() > string2.size())
+        return 1;
+
+    for (std::size_t i = 0, size = string1.size(); i < size; ++i)
+    {
+        char32_t c1 = string1[i] & 0xFF;
+        char32_t c2 = string2[i] & 0xFF;
+
+        if (c1 <= 0x7F)
+            c1 = detail::ascii::data_collate_nocase[c1];
+
+        if (c2 <= 0x7F)
+            c2 = detail::ascii::data_collate_nocase[c2];
+
+        if (c1 != c2)
+            return (c1 < c2) ? -1 : 1;
+    }
+
+    return 0;
+}
+
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
+
+inline uaiw_constexpr int compare_ascii(std::string_view string1, std::string_view string2)
+{
+    return compare_ascii<char>(string1, string2);
+}
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
+inline uaiw_constexpr int collate_ascii(std::string_view string1, std::string_view string2)
+{
+    return collate_ascii<char>(string1, string2);
+}
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
+inline uaiw_constexpr una::search search_ascii(std::string_view string1, std::string_view string2)
+{
+    return search_ascii<char>(string1, string2);
 }
 
 } // namespace caseless
 
-#endif // __cpp_lib_char8_t
-
-// ----------
-// PROPERTIES
-// ----------
-
-namespace codepoint {
-
-class prop_case
+template<typename T>
+uaiw_constexpr bool is_valid_ascii(std::basic_string_view<T> view)
 {
-private:
-    detail::type_codept data = 0;
+    static_assert(std::is_integral_v<T>);
 
-public:
-    prop_case() = delete;
-    explicit prop_case(char32_t c) noexcept : data{detail::impl_case_get_prop(c)} {}
-
-    bool Lowercase() const noexcept
+    for (T c : view)
     {
-        // The Unicode Standard: DerivedCoreProperties.txt -> Lowercase
-        return detail::impl_case_is_lowercase_prop(data);
-    }
-    bool Uppercase() const noexcept
-    {
-        // The Unicode Standard: DerivedCoreProperties.txt -> Uppercase
-        return detail::impl_case_is_uppercase_prop(data);
-    }
-    bool Cased() const noexcept
-    {
-        // The Unicode Standard: DerivedCoreProperties.txt -> Cased
-        return detail::impl_case_is_cased_prop(data);
-    }
-    bool Case_Ignorable() const noexcept
-    {
-        // The Unicode Standard: DerivedCoreProperties.txt -> Case_Ignorable
-        return detail::impl_case_is_case_ignorable_prop(data);
-    }
-    bool Soft_Dotted() const noexcept
-    {
-        // The Unicode Standard: PropList.txt -> Soft_Dotted
-        return detail::impl_case_is_soft_dotted_prop(data);
-    }
-};
-
-inline bool is_lowercase(char32_t c) noexcept
-{
-    return prop_case{c}.Lowercase();
-}
-
-inline bool is_lowercase(const prop_case& p) noexcept
-{
-    return p.Lowercase();
-}
-
-inline bool is_uppercase(char32_t c) noexcept
-{
-    return prop_case{c}.Uppercase();
-}
-
-inline bool is_uppercase(const prop_case& p) noexcept
-{
-    return p.Uppercase();
-}
-
-inline char32_t to_simple_lowercase(char32_t c) noexcept
-{
-    return detail::impl_case_to_simple_lowercase(c);
-}
-
-inline char32_t to_simple_uppercase(char32_t c) noexcept
-{
-    return detail::impl_case_to_simple_uppercase(c);
-}
-
-inline char32_t to_simple_casefold(char32_t c) noexcept
-{
-    return detail::impl_case_to_simple_casefold(c);
-}
-
-#ifndef UNI_ALGO_DISABLE_BREAK_WORD
-inline char32_t to_simple_titlecase(char32_t c) noexcept
-{
-    return detail::impl_case_to_simple_titlecase(c);
-}
-#endif // UNI_ALGO_DISABLE_BREAK_WORD
-
-#ifndef UNI_ALGO_DISABLE_FULL_CASE
-
-inline std::u32string to_lowercase_u32(char32_t c)
-{
-    std::u32string dst;
-    dst.resize(3); // TODO: Magic number
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    dst.resize(detail::impl_case_to_lowercase(c, dst.data()));
-#else
-    dst.resize(detail::impl_case_to_lowercase(c, dst.begin()));
-#endif
-    return dst;
-}
-
-inline std::u32string to_uppercase_u32(char32_t c)
-{
-    std::u32string dst;
-    dst.resize(3); // TODO: Magic number
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    dst.resize(detail::impl_case_to_uppercase(c, dst.data()));
-#else
-    dst.resize(detail::impl_case_to_uppercase(c, dst.begin()));
-#endif
-    return dst;
-}
-
-inline std::u32string to_casefold_u32(char32_t c)
-{
-    std::u32string dst;
-    dst.resize(3); // TODO: Magic number
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    dst.resize(detail::impl_case_to_casefold(c, dst.data()));
-#else
-    dst.resize(detail::impl_case_to_casefold(c, dst.begin()));
-#endif
-    return dst;
-}
-
-#ifndef UNI_ALGO_DISABLE_BREAK_WORD
-inline std::u32string to_titlecase_u32(char32_t c)
-{
-    std::u32string dst;
-    dst.resize(3); // TODO: Magic number
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    dst.resize(detail::impl_case_to_titlecase(c, dst.data()));
-#else
-    dst.resize(detail::impl_case_to_titlecase(c, dst.begin()));
-#endif
-    return dst;
-}
-#endif // UNI_ALGO_DISABLE_BREAK_WORD
-
-#endif // UNI_ALGO_DISABLE_FULL_CASE
-
-} // namespace codepoint
-
-} // namespace uni
-
-
-// AMALGAMATION: uni_algo/prop.h
-
-
-#ifdef UNI_ALGO_DISABLE_PROP
-#error "Property module is disabled via define UNI_ALGO_DISABLE_PROP"
-#endif
-
-#include <type_traits>
-
-//!#include "config.h"
-//!#include "version.h"
-
-//!#include "impl/impl_prop.h"
-
-namespace uni::codepoint {
-
-// REPLACEMENT CHARACTER U+FFFD
-inline constexpr char32_t replacement_char = detail::impl_prop_replacement_char;
-// The last possible code point U+10FFFF
-inline constexpr char32_t max_value = detail::impl_prop_max_value;
-// Total number of code points 0x110000
-inline constexpr std::size_t total_number = detail::impl_prop_total_number;
-
-enum class general_category : unsigned char {Cn = 0,
-                                             Lu,Ll,Lt,Lm,Lo,
-                                             Mn,Mc,Me,
-                                             Nd,Nl,No,
-                                             Pc,Pd,Ps,Pe,Pi,Pf,Po,
-                                             Sm,Sc,Sk,So,
-                                             Zs,Zl,Zp,
-                                             Cc,Cf,Cs,Co};
-
-class prop
-{
-    friend general_category get_general_category(const prop& p) noexcept;
-
-private:
-    detail::type_codept data = 0;
-
-public:
-    prop() = delete;
-    explicit prop(char32_t c) noexcept : data{detail::impl_prop_get_prop(c)} {}
-    // TODO: We can cheat here to make the size of the class smaller because
-    // we know that low-level uses only 8-bit for this property but I'm not sure it's worth it
-    // data{static_cast<unsigned char>(detail::impl_prop_get_prop(c))}
-    // and make data unsigned char
-    // And No, I don't want to change low-level for this I want low-level always to return
-    // property data in type_codept because everything related to code point uses it there.
-
-    // https://www.unicode.org/reports/tr44/#General_Category_Values
-
-    bool General_Category_Lu() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Lu; }
-    bool General_Category_Ll() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Ll; }
-    bool General_Category_Lt() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Lt; }
-    bool General_Category_Lm() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Lm; }
-    bool General_Category_Lo() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Lo; }
-
-    bool General_Category_Mn() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Mn; }
-    bool General_Category_Mc() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Mc; }
-    bool General_Category_Me() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Me; }
-
-    bool General_Category_Nd() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Nd; }
-    bool General_Category_Nl() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Nl; }
-    bool General_Category_No() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_No; }
-
-    bool General_Category_Pc() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pc; }
-    bool General_Category_Pd() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pd; }
-    bool General_Category_Ps() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Ps; }
-    bool General_Category_Pe() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pe; }
-    bool General_Category_Pi() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pi; }
-    bool General_Category_Pf() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Pf; }
-    bool General_Category_Po() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Po; }
-
-    bool General_Category_Sm() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Sm; }
-    bool General_Category_Sc() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Sc; }
-    bool General_Category_Sk() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Sk; }
-    bool General_Category_So() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_So; }
-
-    bool General_Category_Zs() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Zs; }
-    bool General_Category_Zl() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Zl; }
-    bool General_Category_Zp() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Zp; }
-
-    bool General_Category_Cc() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Cc; }
-    bool General_Category_Cf() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Cf; }
-    bool General_Category_Cs() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Cs; }
-    bool General_Category_Co() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Co; }
-    bool General_Category_Cn() const noexcept { return detail::impl_prop_get_gc_prop(data) == detail::impl_General_Category_Cn; }
-
-    bool General_Category_LC() const noexcept
-    {
-        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
-        return gc >= detail::impl_General_Category_Lu && gc <= detail::impl_General_Category_Lt;
-    }
-    bool General_Category_L() const noexcept
-    {
-        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
-        return gc >= detail::impl_General_Category_Lu && gc <= detail::impl_General_Category_Lo;
-    }
-    bool General_Category_M() const noexcept
-    {
-        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
-        return gc >= detail::impl_General_Category_Mn && gc <= detail::impl_General_Category_Me;
-    }
-    bool General_Category_N() const noexcept
-    {
-        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
-        return gc >= detail::impl_General_Category_Nd && gc <= detail::impl_General_Category_No;
-    }
-    bool General_Category_P() const noexcept
-    {
-        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
-        return gc >= detail::impl_General_Category_Pc && gc <= detail::impl_General_Category_Po;
-    }
-    bool General_Category_S() const noexcept
-    {
-        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
-        return gc >= detail::impl_General_Category_Sm && gc <= detail::impl_General_Category_So;
-    }
-    bool General_Category_Z() const noexcept
-    {
-        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
-        return gc >= detail::impl_General_Category_Zs && gc <= detail::impl_General_Category_Zp;
-    }
-    bool General_Category_C() const noexcept
-    {
-        detail::type_codept gc = detail::impl_prop_get_gc_prop(data);
-        return (gc >= detail::impl_General_Category_Cc && gc <= detail::impl_General_Category_Co) ||
-                gc == detail::impl_General_Category_Cn;
+        if (static_cast<char32_t>(c) > 0x7F)
+            return false;
     }
 
-    // https://www.unicode.org/glossary/#code_point_type
-    // Seven fundamental classes of code points in The Unicode Standard:
-    // Graphic, Format, Control, Private-Use, Surrogate, Noncharacter, Reserved.
-
-    bool Noncharacter_Code_Point() const noexcept
-    {
-        // https://www.unicode.org/glossary/#noncharacter
-        return detail::impl_prop_is_noncharacter_prop(data);
-    }
-    bool Surrogate() const noexcept
-    {
-        // https://www.unicode.org/glossary/#surrogate_code_point
-        return General_Category_Cs();
-    }
-    bool Private_Use() const noexcept
-    {
-        // https://www.unicode.org/glossary/#private_use_code_point
-        return General_Category_Co();
-    }
-    bool Control() const noexcept
-    {
-        // https://www.unicode.org/glossary/#control_codes
-        return General_Category_Cc();
-    }
-    bool Graphic() const noexcept
-    {
-        // https://www.unicode.org/glossary/#graphic_character
-        return detail::impl_prop_is_graphic_prop(data);
-    }
-    bool Format() const noexcept
-    {
-        // https://www.unicode.org/glossary/#format_character
-        return detail::impl_prop_is_format_prop(data);
-    }
-    bool Reserved() const noexcept
-    {
-        // https://www.unicode.org/glossary/#reserved_code_point
-        return detail::impl_prop_is_reserved_prop(data);
-    }
-
-    // Other properties
-
-    bool White_Space() const noexcept
-    {
-        // The Unicode Standard: PropList.txt -> White_Space
-        return detail::impl_prop_is_white_space_prop(data);
-    }
-    bool Alphabetic() const noexcept
-    {
-        // The Unicode Standard: DerivedCoreProperties.txt -> Alphabetic
-        return detail::impl_prop_is_alphabetic_prop(data);
-    }
-    bool Numeric() const noexcept
-    {
-        // Code points with General_Category=Number (Nd | Nl | No)
-        return General_Category_N();
-    }
-
-#ifdef UNI_ALGO_EXPERIMENTAL
-    // This might be usefull for tests
-    //unsigned char General_Category() const noexcept { return static_cast<unsigned char>(detail::impl_prop_get_gc_prop(data)); }
-#endif
-};
-
-inline general_category get_general_category(char32_t c) noexcept
-{
-    return static_cast<general_category>(detail::impl_prop_get_gc_prop(detail::impl_prop_get_prop(c)));
-}
-
-inline general_category get_general_category(const prop& p) noexcept
-{
-    return static_cast<general_category>(detail::impl_prop_get_gc_prop(p.data));
-}
-
-inline bool is_alphabetic(char32_t c) noexcept
-{
-    return prop{c}.Alphabetic();
-}
-
-inline bool is_alphabetic(const prop& p) noexcept
-{
-    return p.Alphabetic();
-}
-
-inline bool is_numeric(char32_t c) noexcept
-{
-    return prop{c}.Numeric();
-}
-
-inline bool is_numeric(const prop& p) noexcept
-{
-    return p.Numeric();
-}
-
-inline bool is_alphanumeric(char32_t c) noexcept
-{
-    prop p{c};
-
-    return p.Alphabetic() || p.Numeric();
-}
-
-inline bool is_alphanumeric(const prop& p) noexcept
-{
-    return p.Alphabetic() || p.Numeric();
-}
-
-inline bool is_whitespace(char32_t c) noexcept
-{
-    return prop{c}.White_Space();
-}
-
-inline bool is_whitespace(const prop& p) noexcept
-{
-    return p.White_Space();
-}
-
-inline bool is_reserved(char32_t c) noexcept
-{
-    // https://www.unicode.org/glossary/#reserved_code_point
-    return prop{c}.Reserved();
-}
-
-inline bool is_reserved(const prop& p) noexcept
-{
-    // https://www.unicode.org/glossary/#reserved_code_point
-    return p.Reserved();
-}
-
-inline bool is_valid(char32_t c) noexcept
-{
-    // https://www.unicode.org/glossary/#code_point
-    return detail::impl_prop_is_valid(c);
-}
-
-inline bool is_valid_scalar(char32_t c) noexcept
-{
-    // https://www.unicode.org/glossary/#unicode_scalar_value
-    return detail::impl_prop_is_valid_scalar(c);
-}
-
-inline bool is_supplementary(char32_t c) noexcept
-{
-    // https://www.unicode.org/glossary/#supplementary_code_point
-    return detail::impl_prop_is_supplementary(c);
-}
-
-inline bool is_noncharacter(char32_t c) noexcept
-{
-    // https://www.unicode.org/glossary/#noncharacter
-    return detail::impl_prop_is_noncharacter(c);
-}
-
-inline bool is_noncharacter(const prop& p) noexcept
-{
-    // https://www.unicode.org/glossary/#noncharacter
-    return p.Noncharacter_Code_Point();
-}
-
-inline bool is_surrogate(char32_t c) noexcept
-{
-    // https://www.unicode.org/glossary/#surrogate_code_point
-    return detail::impl_prop_is_surrogate(c);
-}
-
-inline bool is_surrogate(const prop& p) noexcept
-{
-    // https://www.unicode.org/glossary/#surrogate_code_point
-    return p.Surrogate();
-}
-
-inline bool is_private_use(char32_t c) noexcept
-{
-    // https://www.unicode.org/glossary/#private_use_code_point
-    return detail::impl_prop_is_private_use(c);
-}
-
-inline bool is_private_use(const prop& p) noexcept
-{
-    // https://www.unicode.org/glossary/#private_use_code_point
-    return p.Private_Use();
-}
-
-inline bool is_control(char32_t c) noexcept
-{
-    // https://www.unicode.org/glossary/#control_codes
-    return detail::impl_prop_is_control(c);
-}
-
-inline bool is_control(const prop& p) noexcept
-{
-    // https://www.unicode.org/glossary/#control_codes
-    return p.Control();
-}
-
-} // namespace uni::codepoint
-
-
-// AMALGAMATION: uni_algo/norm.h
-
-
-#ifdef UNI_ALGO_DISABLE_NORM
-#error "Normalization module is disabled via define UNI_ALGO_DISABLE_NORM"
-#endif
-
-#include <type_traits>
-#include <string>
-#include <string_view>
-#include <iterator>
-
-//!#include "config.h"
-//!#include "version.h"
-//!#include "internal/ranges_core.h"
-
-//!#include "impl/impl_norm.h"
-
-namespace uni {
-
-namespace detail {
-
-template<typename Dst, typename Alloc, typename Src, size_t SizeX,
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FnNorm)(typename Src::const_pointer, typename Src::const_pointer, typename Dst::pointer)>
-#else
-    size_t(*FnNorm)(typename Src::const_iterator, typename Src::const_iterator, typename Dst::iterator)>
-#endif
-Dst t_norm(const Alloc& alloc, Src src)
-{
-    Dst dst{alloc};
-
-    std::size_t length = src.size();
-
-    if (length)
-    {
-        if (length > dst.max_size() / SizeX) // Overflow protection
-        {
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
-            throw std::bad_alloc();
-#else
-            std::abort();
-#endif
-        }
-
-        dst.resize(length * SizeX);
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        dst.resize(FnNorm(src.data(), src.data() + src.size(), dst.data()));
-#else
-        dst.resize(FnNorm(src.cbegin(), src.cend(), dst.begin()));
-#endif
-#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
-        dst.shrink_to_fit();
-#endif
-    }
-
-    return dst;
-}
-
-// For NFKC and NFKD it is ineffective to preallocate a string because max decomposition is 11/18
-// in these forms, so we are using back_inserter for these normalization forms.
-// Our functions are designed to work with most C++ iterators but sometimes proxy iterators are needed.
-// In this case we need a simple proxy output iterator where operator-() is no-op.
-// See impl/example/cpp_proxy_iterator.h
-template<class Iter>
-class proxy_it_out
-{
-private:
-    Iter it;
-public:
-    explicit proxy_it_out(Iter iter) : it(iter) {}
-    decltype(*it) operator*() { return *it; }
-    size_t operator-(const proxy_it_out&) { return 0; } // no-op
-    proxy_it_out& operator++(int) { return *this; } // no-op (by default in C++ output iterators)
-    // Test
-    /*size_t operator-(const proxy_it_out& rhs) { return it - rhs.it; }
-    proxy_it_out operator++(int)
-    {
-        proxy_it_out temp(*this);
-        ++it;
-        return temp;
-    }*/
-};
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-
-template<typename Dst, typename Alloc, typename Src,
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    size_t(*FnNorm)(typename Src::const_pointer, typename Src::const_pointer, proxy_it_out<std::back_insert_iterator<Dst>>)>
-#else
-    size_t(*FnNorm)(typename Src::const_iterator, typename Src::const_iterator, proxy_it_out<std::back_insert_iterator<Dst>>)>
-#endif
-Dst t_norm2(const Alloc& alloc, Src src)
-{
-    Dst dst{alloc};
-
-    std::size_t length = src.size();
-
-    if (length)
-    {
-        if (length > dst.max_size() / 3) // Overflow protection
-        {
-#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || (_HAS_EXCEPTIONS != 0)
-            throw std::bad_alloc();
-#else
-            std::abort();
-#endif
-        }
-
-        dst.reserve(length * 3 / 2);
-
-        proxy_it_out<std::back_insert_iterator<Dst>> it_out{std::back_inserter(dst)};
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-        FnNorm(src.data(), src.data() + src.size(), it_out);
-#else
-        FnNorm(src.cbegin(), src.cend(), it_out);
-#endif
-#ifndef UNI_ALGO_DISABLE_SHRINK_TO_FIT
-        dst.shrink_to_fit();
-#endif
-    }
-
-    return dst;
-}
-
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-} // namespace detail
-
-namespace norm {
-
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_nfc_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_norm<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_norm_to_nfc_utf8, detail::impl_norm_to_nfc_utf8>(alloc, source);
-}
-
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_nfd_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_norm<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_norm_to_nfd_utf8, detail::impl_norm_to_nfd_utf8>(alloc, source);
-}
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_nfkc_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_norm2<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_norm_to_nfkc_utf8>(alloc, source);
-}
-
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_nfkd_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_norm2<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_norm_to_nfkd_utf8>(alloc, source);
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-#ifndef UNI_ALGO_DISABLE_PROP
-template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
-to_unaccent_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-    return detail::t_norm<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>, Alloc, std::basic_string_view<UTF8>,
-            detail::impl_x_norm_to_unaccent_utf8, detail::impl_norm_to_unaccent_utf8>(alloc, source);
-}
-#endif // UNI_ALGO_DISABLE_PROP
-
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_nfc_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_norm<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_norm_to_nfc_utf16, detail::impl_norm_to_nfc_utf16>(alloc, source);
-}
-
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_nfd_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_norm<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_norm_to_nfd_utf16, detail::impl_norm_to_nfd_utf16>(alloc, source);
-}
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_nfkc_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_norm2<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_norm_to_nfkc_utf16>(alloc, source);
-}
-
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_nfkd_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_norm2<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_norm_to_nfkd_utf16>(alloc, source);
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-#ifndef UNI_ALGO_DISABLE_PROP
-template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
-to_unaccent_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-    return detail::t_norm<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>, Alloc, std::basic_string_view<UTF16>,
-            detail::impl_x_norm_to_unaccent_utf16, detail::impl_norm_to_unaccent_utf16>(alloc, source);
-}
-#endif // UNI_ALGO_DISABLE_PROP
-
-template<typename UTF8>
-bool is_nfc_utf8(std::basic_string_view<UTF8> source)
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_norm_is_nfc_utf8(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
-#else
-    return detail::impl_norm_is_nfc_utf8(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
-#endif
-}
-
-template<typename UTF8>
-bool is_nfd_utf8(std::basic_string_view<UTF8> source)
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_norm_is_nfd_utf8(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
-#else
-    return detail::impl_norm_is_nfd_utf8(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
-#endif
-}
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-template<typename UTF8>
-bool is_nfkc_utf8(std::basic_string_view<UTF8> source)
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_norm_is_nfkc_utf8(source.data(), source.data() + source.size())  == detail::impl_norm_is_yes;
-#else
-    return detail::impl_norm_is_nfkc_utf8(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
-#endif
-}
-
-template<typename UTF8>
-bool is_nfkd_utf8(std::basic_string_view<UTF8> source)
-{
-    static_assert(std::is_integral_v<UTF8>);
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_norm_is_nfkd_utf8(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
-#else
-    return detail::impl_norm_is_nfkd_utf8(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
-#endif
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-template<typename UTF16>
-bool is_nfc_utf16(std::basic_string_view<UTF16> source)
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_norm_is_nfc_utf16(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
-#else
-    return detail::impl_norm_is_nfc_utf16(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
-#endif
-}
-
-template<typename UTF16>
-bool is_nfd_utf16(std::basic_string_view<UTF16> source)
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_norm_is_nfd_utf16(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
-#else
-    return detail::impl_norm_is_nfd_utf16(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
-#endif
-}
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-template<typename UTF16>
-bool is_nfkc_utf16(std::basic_string_view<UTF16> source)
-{
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_norm_is_nfkc_utf16(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
-#else
-    return detail::impl_norm_is_nfkc_utf16(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
-#endif
+    return true;
 }
 
-template<typename UTF16>
-bool is_nfkd_utf16(std::basic_string_view<UTF16> source)
+inline uaiw_constexpr bool is_valid_ascii(std::string_view view)
 {
-    static_assert(std::is_integral_v<UTF16> && sizeof(UTF16) >= sizeof(char16_t));
-
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    return detail::impl_norm_is_nfkd_utf16(source.data(), source.data() + source.size()) == detail::impl_norm_is_yes;
-#else
-    return detail::impl_norm_is_nfkd_utf16(source.cbegin(), source.cend()) == detail::impl_norm_is_yes;
-#endif
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-template<typename Iter, typename Sent, typename Dest>
-void to_nfc_utf8(Iter first, Sent last, Dest result)
-{
-    // TODO: static_assert for Dest is output iterator
-    detail::proxy_it_out it_out(result);
-    detail::impl_norm_to_nfc_utf8(first, last, it_out);
-}
-
-template<typename Iter, typename Sent, typename Dest>
-void to_nfd_utf8(Iter first, Sent last, Dest result)
-{
-    // TODO: static_assert for Dest is output iterator
-    detail::proxy_it_out it_out(result);
-    detail::impl_norm_to_nfd_utf8(first, last, it_out);
-}
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-template<typename Iter, typename Sent, typename Dest>
-void to_nfkc_utf8(Iter first, Sent last, Dest result)
-{
-    // TODO: static_assert for Dest is output iterator
-    detail::proxy_it_out it_out(result);
-    detail::impl_norm_to_nfkc_utf8(first, last, it_out);
+    return is_valid_ascii<char>(view);
 }
 
-template<typename Iter, typename Sent, typename Dest>
-void to_nfkd_utf8(Iter first, Sent last, Dest result)
+template<typename T>
+uaiw_constexpr std::basic_string_view<T> trim_ascii(std::basic_string_view<T> view)
 {
-    // TODO: static_assert for Dest is output iterator
-    detail::proxy_it_out it_out(result);
-    detail::impl_norm_to_nfkd_utf8(first, last, it_out);
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+    using namespace una; // NOLINT(google-build-using-namespace)
 
-inline std::string to_nfc_utf8(std::string_view source)
-{
-    return to_nfc_utf8<char>(source);
-}
-inline std::string to_nfd_utf8(std::string_view source)
-{
-    return to_nfd_utf8<char>(source);
-}
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline std::string to_nfkc_utf8(std::string_view source)
-{
-    return to_nfkc_utf8<char>(source);
-}
-inline std::string to_nfkd_utf8(std::string_view source)
-{
-    return to_nfkd_utf8<char>(source);
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-#ifndef UNI_ALGO_DISABLE_PROP
-inline std::string to_unaccent_utf8(std::string_view source)
-{
-    return to_unaccent_utf8<char>(source);
-}
-#endif // UNI_ALGO_DISABLE_PROP
+    static_assert(std::is_integral_v<T>);
 
-inline std::u16string to_nfc_utf16(std::u16string_view source)
-{
-    return to_nfc_utf16<char16_t>(source);
-}
-inline std::u16string to_nfd_utf16(std::u16string_view source)
-{
-    return to_nfd_utf16<char16_t>(source);
-}
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline std::u16string to_nfkc_utf16(std::u16string_view source)
-{
-    return to_nfkc_utf16<char16_t>(source);
-}
-inline std::u16string to_nfkd_utf16(std::u16string_view source)
-{
-    return to_nfkd_utf16<char16_t>(source);
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-#ifndef UNI_ALGO_DISABLE_PROP
-inline std::u16string to_unaccent_utf16(std::u16string_view source)
-{
-    return to_unaccent_utf16<char16_t>(source);
-}
-#endif // UNI_ALGO_DISABLE_PROP
+    std::size_t pos = view.find_first_not_of(detail::ascii::data_trim_view<T>);
+    std::size_t end = view.find_last_not_of(detail::ascii::data_trim_view<T>);
 
-inline bool is_nfc_utf8(std::string_view source)
-{
-    return is_nfc_utf8<char>(source);
-}
-inline bool is_nfd_utf8(std::string_view source)
-{
-    return is_nfd_utf8<char>(source);
-}
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline bool is_nfkc_utf8(std::string_view source)
-{
-    return is_nfkc_utf8<char>(source);
-}
-inline bool is_nfkd_utf8(std::string_view source)
-{
-    return is_nfkd_utf8<char>(source);
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+    view.remove_prefix(pos == std::string_view::npos ? 0 : pos);
+    view.remove_suffix(end == std::string_view::npos ? 0 : view.size() + pos - end - 1);
 
-inline bool is_nfc_utf16(std::u16string_view source)
-{
-    return is_nfc_utf16<char16_t>(source);
-}
-inline bool is_nfd_utf16(std::u16string_view source)
-{
-    return is_nfd_utf16<char16_t>(source);
-}
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline bool is_nfkc_utf16(std::u16string_view source)
-{
-    return is_nfkc_utf16<char16_t>(source);
-}
-inline bool is_nfkd_utf16(std::u16string_view source)
-{
-    return is_nfkd_utf16<char16_t>(source);
+    return view;
 }
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
-#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring to_nfc_utf16(std::wstring_view source)
-{
-    return to_nfc_utf16<wchar_t>(source);
-}
-inline std::wstring to_nfd_utf16(std::wstring_view source)
-{
-    return to_nfd_utf16<wchar_t>(source);
-}
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline std::wstring to_nfkc_utf16(std::wstring_view source)
-{
-    return to_nfkc_utf16<wchar_t>(source);
-}
-inline std::wstring to_nfkd_utf16(std::wstring_view source)
-{
-    return to_nfkd_utf16<wchar_t>(source);
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-#ifndef UNI_ALGO_DISABLE_PROP
-inline std::wstring to_unaccent_utf16(std::wstring_view source)
+template<typename T>
+uaiw_constexpr std::basic_string_view<T> trim_start_ascii(std::basic_string_view<T> view)
 {
-    return to_unaccent_utf16<wchar_t>(source);
-}
-#endif // UNI_ALGO_DISABLE_PROP
+    using namespace una; // NOLINT(google-build-using-namespace)
 
-inline bool is_nfc_utf16(std::wstring_view source)
-{
-    return is_nfc_utf16<wchar_t>(source);
-}
-inline bool is_nfd_utf16(std::wstring_view source)
-{
-    return is_nfd_utf16<wchar_t>(source);
-}
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline bool is_nfkc_utf16(std::wstring_view source)
-{
-    return is_nfkc_utf16<wchar_t>(source);
-}
-inline bool is_nfkd_utf16(std::wstring_view source)
-{
-    return is_nfkd_utf16<wchar_t>(source);
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+    static_assert(std::is_integral_v<T>);
 
-#ifdef __cpp_lib_char8_t
+    std::size_t pos = view.find_first_not_of(detail::ascii::data_trim_view<T>);
 
-inline std::u8string to_nfc_utf8(std::u8string_view source)
-{
-    return to_nfc_utf8<char8_t>(source);
-}
-inline std::u8string to_nfd_utf8(std::u8string_view source)
-{
-    return to_nfd_utf8<char8_t>(source);
-}
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline std::u8string to_nfkc_utf8(std::u8string_view source)
-{
-    return to_nfkc_utf8<char8_t>(source);
-}
-inline std::u8string to_nfkd_utf8(std::u8string_view source)
-{
-    return to_nfkd_utf8<char8_t>(source);
-}
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-#ifndef UNI_ALGO_DISABLE_PROP
-inline std::u8string to_unaccent_utf8(std::u8string_view source)
-{
-    return to_unaccent_utf8<char8_t>(source);
-}
-#endif // UNI_ALGO_DISABLE_PROP
+    view.remove_prefix(pos == std::string_view::npos ? 0 : pos);
 
-inline bool is_nfc_utf8(std::u8string_view source)
-{
-    return is_nfc_utf8<char8_t>(source);
-}
-inline bool is_nfd_utf8(std::u8string_view source)
-{
-    return is_nfd_utf8<char8_t>(source);
-}
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline bool is_nfkc_utf8(std::u8string_view source)
-{
-    return is_nfkc_utf8<char8_t>(source);
-}
-inline bool is_nfkd_utf8(std::u8string_view source)
-{
-    return is_nfkd_utf8<char8_t>(source);
+    return view;
 }
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-#endif // __cpp_lib_char8_t
-
-} // namespace norm
-
-// ------
-// RANGES
-// ------
-
-namespace ranges::norm {
-
-template<class Range>
-class nfc_view : public detail::rng::view_base
-{
-private:
-    template<class Iter, class Sent>
-    class nfc
-    {
-        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
-                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
-                      "norm::nfc view requires char32_t range");
 
-    private:
-        nfc_view* parent = nullptr;
-        Iter it_pos;
-
-        bool stream_end = false;
-
-        detail::type_codept codepoint = 0;
-        detail::impl_norm_iter_state state{};
-
-        void iter_func_norm_nfc()
-        {
-            if (!detail::unstable_norm_iter_ready(&state))
-                while (it_pos != std::end(parent->range) && !detail::unstable_norm_iter_nfc(&state, *it_pos++));
-            if (!detail::unstable_norm_iter_next_comp(&state, &codepoint))
-                stream_end = true;
-        }
-
-    public:
-        using iterator_category = std::input_iterator_tag;
-        using value_type        = char32_t;
-        using pointer           = void;
-        using reference         = char32_t;
-        using difference_type   = std::ptrdiff_t;
-
-        nfc() = default;
-        explicit nfc(nfc_view& p, Iter begin, Sent) : parent{std::addressof(p)}, it_pos{begin}
-        {
-            detail::impl_norm_iter_state_reset(&state);
-
-            iter_func_norm_nfc(); // Fn call must not be inlined
-        }
-        reference operator*() const noexcept { return codepoint; }
-        nfc& operator++()
-        {
-            iter_func_norm_nfc(); // Fn call must not be inlined
-
-            return *this;
-        }
-        nfc operator++(int)
-        {
-            nfc tmp = *this;
-            operator++();
-            return tmp;
-        }
-        friend uaiw_constexpr bool operator==(const nfc& x, const nfc& y) { return x.stream_end == y.stream_end; }
-        friend uaiw_constexpr bool operator!=(const nfc& x, const nfc& y) { return x.stream_end != y.stream_end; }
-        friend uaiw_constexpr bool operator==(const nfc& x, uni::sentinel_t) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(const nfc& x, uni::sentinel_t) { return !x.stream_end; }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const nfc& x) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const nfc& x) { return !x.stream_end; }
-    };
-
-    using iter_t = detail::rng::iterator_t<Range>;
-    using sent_t = detail::rng::sentinel_t<Range>;
-
-    Range range = Range{};
-    nfc<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
-
-public:
-    uaiw_constexpr nfc_view() = default;
-    uaiw_constexpr explicit nfc_view(Range r) : range{std::move(r)} {}
-    //uaiw_constexpr Range base() const & { return range; }
-    //uaiw_constexpr Range base() && { return std::move(range); }
-    uaiw_constexpr auto begin()
-    {
-        if (cached_begin)
-            return cached_begin_value;
-
-        cached_begin_value = nfc<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
-
-        return cached_begin_value;
-    }
-    uaiw_constexpr auto end()
-    {
-        return uni::sentinel;
-    }
-    //uaiw_constexpr bool empty() { return begin() == end(); }
-    //explicit uaiw_constexpr operator bool() { return !empty(); }
-};
-
-template<class Range>
-class nfd_view : public detail::rng::view_base
-{
-private:
-    template<class Iter, class Sent>
-    class nfd
-    {
-        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
-                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
-                      "norm::nfd view requires char32_t range");
-
-    private:
-        nfd_view* parent = nullptr;
-        Iter it_pos;
-
-        bool stream_end = false;
-
-        detail::type_codept codepoint = 0;
-        detail::impl_norm_iter_state state{};
-
-        void iter_func_norm_nfd()
-        {
-            if (!detail::unstable_norm_iter_ready(&state))
-                while (it_pos != std::end(parent->range) && !detail::unstable_norm_iter_nfd(&state, *it_pos++));
-            if (!detail::unstable_norm_iter_next_decomp(&state, &codepoint))
-                stream_end = true;
-        }
-
-    public:
-        using iterator_category = std::input_iterator_tag;
-        using value_type        = char32_t;
-        using pointer           = void;
-        using reference         = char32_t;
-        using difference_type   = std::ptrdiff_t;
-
-        nfd() = default;
-        explicit nfd(nfd_view& p, Iter begin, Sent) : parent{std::addressof(p)}, it_pos{begin}
-        {
-            detail::impl_norm_iter_state_reset(&state);
-
-            iter_func_norm_nfd(); // Fn call must not be inlined
-        }
-        reference operator*() const noexcept { return codepoint; }
-        nfd& operator++()
-        {
-            iter_func_norm_nfd(); // Fn call must not be inlined
-
-            return *this;
-        }
-        nfd operator++(int)
-        {
-            nfd tmp = *this;
-            operator++();
-            return tmp;
-        }
-        friend uaiw_constexpr bool operator==(const nfd& x, const nfd& y) { return x.stream_end == y.stream_end; }
-        friend uaiw_constexpr bool operator!=(const nfd& x, const nfd& y) { return x.stream_end != y.stream_end; }
-        friend uaiw_constexpr bool operator==(const nfd& x, uni::sentinel_t) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(const nfd& x, uni::sentinel_t) { return !x.stream_end; }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const nfd& x) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const nfd& x) { return !x.stream_end; }
-    };
-
-    using iter_t = detail::rng::iterator_t<Range>;
-    using sent_t = detail::rng::sentinel_t<Range>;
-
-    Range range = Range{};
-    nfd<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
-
-public:
-    uaiw_constexpr nfd_view() = default;
-    uaiw_constexpr explicit nfd_view(Range r) : range{std::move(r)} {}
-    //uaiw_constexpr Range base() const & { return range; }
-    //uaiw_constexpr Range base() && { return std::move(range); }
-    uaiw_constexpr auto begin()
-    {
-        if (cached_begin)
-            return cached_begin_value;
-
-        cached_begin_value = nfd<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
-
-        return cached_begin_value;
-    }
-    uaiw_constexpr auto end()
-    {
-        return uni::sentinel;
-    }
-    //uaiw_constexpr bool empty() { return begin() == end(); }
-    //explicit uaiw_constexpr operator bool() { return !empty(); }
-};
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-
-template<class Range>
-class nfkc_view : public detail::rng::view_base
-{
-private:
-    template<class Iter, class Sent>
-    class nfkc
-    {
-        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
-                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
-                      "norm::nfkc view requires char32_t range");
-
-    private:
-        nfkc_view* parent = nullptr;
-        Iter it_pos;
-
-        bool stream_end = false;
-
-        detail::type_codept codepoint = 0;
-        detail::impl_norm_iter_state state{};
-
-        void iter_func_norm_nfkc()
-        {
-            if (!detail::unstable_norm_iter_ready(&state))
-                while (it_pos != std::end(parent->range) && !detail::unstable_norm_iter_nfkc(&state, *it_pos++));
-            if (!detail::unstable_norm_iter_next_comp(&state, &codepoint))
-                stream_end = true;
-        }
-
-    public:
-        using iterator_category = std::input_iterator_tag;
-        using value_type        = char32_t;
-        using pointer           = void;
-        using reference         = char32_t;
-        using difference_type   = std::ptrdiff_t;
-
-        nfkc() = default;
-        explicit nfkc(nfkc_view& p, Iter begin, Sent) : parent{std::addressof(p)}, it_pos{begin}
-        {
-            detail::impl_norm_iter_state_reset(&state);
-
-            iter_func_norm_nfkc(); // Fn call must not be inlined
-        }
-        reference operator*() const noexcept { return codepoint; }
-        nfkc& operator++()
-        {
-            iter_func_norm_nfkc(); // Fn call must not be inlined
-
-            return *this;
-        }
-        nfkc operator++(int)
-        {
-            nfkc tmp = *this;
-            operator++();
-            return tmp;
-        }
-        friend uaiw_constexpr bool operator==(const nfkc& x, const nfkc& y) { return x.stream_end == y.stream_end; }
-        friend uaiw_constexpr bool operator!=(const nfkc& x, const nfkc& y) { return x.stream_end != y.stream_end; }
-        friend uaiw_constexpr bool operator==(const nfkc& x, uni::sentinel_t) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(const nfkc& x, uni::sentinel_t) { return !x.stream_end; }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const nfkc& x) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const nfkc& x) { return !x.stream_end; }
-    };
-
-    using iter_t = detail::rng::iterator_t<Range>;
-    using sent_t = detail::rng::sentinel_t<Range>;
-
-    Range range = Range{};
-    nfkc<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
-
-public:
-    uaiw_constexpr nfkc_view() = default;
-    uaiw_constexpr explicit nfkc_view(Range r) : range{std::move(r)} {}
-    //uaiw_constexpr Range base() const & { return range; }
-    //uaiw_constexpr Range base() && { return std::move(range); }
-    uaiw_constexpr auto begin()
-    {
-        if (cached_begin)
-            return cached_begin_value;
-
-        cached_begin_value = nfkc<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
-
-        return cached_begin_value;
-    }
-    uaiw_constexpr auto end()
-    {
-        return uni::sentinel;
-    }
-    //uaiw_constexpr bool empty() { return begin() == end(); }
-    //explicit uaiw_constexpr operator bool() { return !empty(); }
-};
-
-template<class Range>
-class nfkd_view : public detail::rng::view_base
-{
-private:
-    template<class Iter, class Sent>
-    class nfkd
-    {
-        static_assert(std::is_integral_v<detail::rng::iter_value_t<Iter>> &&
-                      sizeof(detail::rng::iter_value_t<Iter>) >= sizeof(char32_t),
-                      "norm::nfkd view requires char32_t range");
-
-    private:
-        nfkd_view* parent = nullptr;
-        Iter it_pos;
-
-        bool stream_end = false;
-
-        detail::type_codept codepoint = 0;
-        detail::impl_norm_iter_state state{};
-
-        void iter_func_norm_nfkd()
-        {
-            if (!detail::unstable_norm_iter_ready(&state))
-                while (it_pos != std::end(parent->range) && !detail::unstable_norm_iter_nfkd(&state, *it_pos++));
-            if (!detail::unstable_norm_iter_next_decomp(&state, &codepoint))
-                stream_end = true;
-        }
-
-    public:
-        using iterator_category = std::input_iterator_tag;
-        using value_type        = char32_t;
-        using pointer           = void;
-        using reference         = char32_t;
-        using difference_type   = std::ptrdiff_t;
-
-        nfkd() = default;
-        explicit nfkd(nfkd_view& p, Iter begin, Sent) : parent{std::addressof(p)}, it_pos{begin}
-        {
-            detail::impl_norm_iter_state_reset(&state);
-
-            iter_func_norm_nfkd(); // Fn call must not be inlined
-        }
-        reference operator*() const noexcept { return codepoint; }
-        nfkd& operator++()
-        {
-            iter_func_norm_nfkd(); // Fn call must not be inlined
-
-            return *this;
-        }
-        nfkd operator++(int)
-        {
-            nfkd tmp = *this;
-            operator++();
-            return tmp;
-        }
-        friend uaiw_constexpr bool operator==(const nfkd& x, const nfkd& y) { return x.stream_end == y.stream_end; }
-        friend uaiw_constexpr bool operator!=(const nfkd& x, const nfkd& y) { return x.stream_end != y.stream_end; }
-        friend uaiw_constexpr bool operator==(const nfkd& x, uni::sentinel_t) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(const nfkd& x, uni::sentinel_t) { return !x.stream_end; }
-        friend uaiw_constexpr bool operator==(uni::sentinel_t, const nfkd& x) { return x.stream_end; }
-        friend uaiw_constexpr bool operator!=(uni::sentinel_t, const nfkd& x) { return !x.stream_end; }
-    };
-
-    using iter_t = detail::rng::iterator_t<Range>;
-    using sent_t = detail::rng::sentinel_t<Range>;
-
-    Range range = Range{};
-    nfkd<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
-
-public:
-    uaiw_constexpr nfkd_view() = default;
-    uaiw_constexpr explicit nfkd_view(Range r) : range{std::move(r)} {}
-    //uaiw_constexpr Range base() const & { return range; }
-    //uaiw_constexpr Range base() && { return std::move(range); }
-    uaiw_constexpr auto begin()
-    {
-        if (cached_begin)
-            return cached_begin_value;
-
-        cached_begin_value = nfkd<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
-
-        return cached_begin_value;
-    }
-    uaiw_constexpr auto end()
-    {
-        return uni::sentinel;
-    }
-    //uaiw_constexpr bool empty() { return begin() == end(); }
-    //explicit uaiw_constexpr operator bool() { return !empty(); }
-};
-
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-template<class Range>
-nfc_view(Range&&) -> nfc_view<views::all_t<Range>>;
-template<class Range>
-nfd_view(Range&&) -> nfd_view<views::all_t<Range>>;
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-template<class Range>
-nfkc_view(Range&&) -> nfkc_view<views::all_t<Range>>;
-template<class Range>
-nfkd_view(Range&&) -> nfkd_view<views::all_t<Range>>;
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-} // namespace ranges::norm
-
-namespace detail::rng {
-
-/* NFC_VIEW */
-
-struct adaptor_nfc
-{
-    template<class R>
-    uaiw_constexpr auto operator()(R&& r) const
-    { return ranges::norm::nfc_view{std::forward<R>(r)}; }
-};
-template<class R>
-uaiw_constexpr auto operator|(R&& r, const adaptor_nfc& a) { return a(std::forward<R>(r)); }
-
-/* NFD_VIEW */
-
-struct adaptor_nfd
-{
-    template<class R>
-    uaiw_constexpr auto operator()(R&& r) const
-    { return ranges::norm::nfd_view{std::forward<R>(r)}; }
-};
-template<class R>
-uaiw_constexpr auto operator|(R&& r, const adaptor_nfd& a) { return a(std::forward<R>(r)); }
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-
-/* NFKC_VIEW */
-
-struct adaptor_nfkc
-{
-    template<class R>
-    uaiw_constexpr auto operator()(R&& r) const
-    { return ranges::norm::nfkc_view{std::forward<R>(r)}; }
-};
-template<class R>
-uaiw_constexpr auto operator|(R&& r, const adaptor_nfkc& a) { return a(std::forward<R>(r)); }
-
-/* NFKD_VIEW */
-
-struct adaptor_nfkd
+template<typename T>
+uaiw_constexpr std::basic_string_view<T> trim_end_ascii(std::basic_string_view<T> view)
 {
-    template<class R>
-    uaiw_constexpr auto operator()(R&& r) const
-    { return ranges::norm::nfkd_view{std::forward<R>(r)}; }
-};
-template<class R>
-uaiw_constexpr auto operator|(R&& r, const adaptor_nfkd& a) { return a(std::forward<R>(r)); }
-
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-} // namespace detail::rng
+    using namespace una; // NOLINT(google-build-using-namespace)
 
-namespace ranges::views::norm {
+    static_assert(std::is_integral_v<T>);
 
-inline constexpr detail::rng::adaptor_nfc nfc;
-inline constexpr detail::rng::adaptor_nfd nfd;
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline constexpr detail::rng::adaptor_nfkc nfkc;
-inline constexpr detail::rng::adaptor_nfkd nfkd;
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
+    std::size_t end = view.find_last_not_of(detail::ascii::data_trim_view<T>);
 
-} // namespace ranges::views::norm
+    view.remove_suffix(end == std::string_view::npos ? 0 : view.size() - end - 1);
 
-namespace views = ranges::views;
-
-// ----------
-// PROPERTIES
-// ----------
-
-namespace codepoint {
-
-class prop_norm
-{
-private:
-    detail::type_codept data = 0;
-
-public:
-    prop_norm() = delete;
-    explicit prop_norm(char32_t c) noexcept : data{detail::impl_norm_get_prop(c)} {}
-
-    unsigned char Canonical_Combining_Class() const noexcept
-    {
-        // The Unicode Standard: UnicodeData.txt -> Canonical_Combining_Class
-        return detail::impl_norm_get_ccc_prop(data);
-    }
-    bool NFC_Quick_Check_Yes() const noexcept
-    {
-        // The Unicode Standard: DerivedNormalizationProps.txt -> NFC_Quick_Check=Yes
-        return detail::impl_norm_is_nfc_qc_yes_prop(data);
-    }
-    bool NFD_Quick_Check_Yes() const noexcept
-    {
-        // The Unicode Standard: DerivedNormalizationProps.txt -> NFD_Quick_Check=Yes
-        return detail::impl_norm_is_nfd_qc_yes_prop(data);
-    }
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-    bool NFKC_Quick_Check_Yes() const noexcept
-    {
-        // The Unicode Standard: DerivedNormalizationProps.txt -> NFKC_Quick_Check=Yes
-        return detail::impl_norm_is_nfkc_qc_yes_prop(data);
-    }
-    bool NFKD_Quick_Check_Yes() const noexcept
-    {
-        // The Unicode Standard: DerivedNormalizationProps.txt -> NFKD_Quick_Check=Yes
-        return detail::impl_norm_is_nfkd_qc_yes_prop(data);
-    }
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-};
-
-inline char32_t to_compose(char32_t c1, char32_t c2) noexcept
-{
-    return detail::impl_norm_to_compose(c1, c2);
+    return view;
 }
 
-inline std::u32string to_decompose_u32(char32_t c)
+inline uaiw_constexpr std::string_view trim_ascii(std::string_view view)
 {
-    std::u32string dst;
-    dst.resize(detail::impl_x_norm_to_nfd_utf16); // TODO: Better value
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    dst.resize(detail::impl_norm_to_decompose(c, dst.data()));
-#else
-    dst.resize(detail::impl_norm_to_decompose(c, dst.begin()));
-#endif
-    return dst;
+    return trim_ascii<char>(view);
 }
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-inline std::u32string to_decompose_compat_u32(char32_t c)
+inline uaiw_constexpr std::string_view trim_start_ascii(std::string_view view)
 {
-    std::u32string dst;
-    dst.resize(detail::impl_x_norm_to_nfkd_utf16); // TODO: Better value
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    dst.resize(detail::impl_norm_to_decompose_compat(c, dst.data()));
-#else
-    dst.resize(detail::impl_norm_to_decompose_compat(c, dst.begin()));
-#endif
-    return dst;
+    return trim_start_ascii<char>(view);
 }
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-inline std::u32string to_decompose_hangul_u32(char32_t c)
+inline uaiw_constexpr std::string_view trim_end_ascii(std::string_view view)
 {
-    std::u32string dst;
-    dst.resize(detail::impl_x_norm_to_nfd_utf16); // TODO: Better value
-#ifdef UNI_ALGO_DISABLE_CPP_ITERATORS
-    dst.resize(detail::impl_norm_to_decompose_hangul(c, dst.data()));
-#else
-    dst.resize(detail::impl_norm_to_decompose_hangul(c, dst.begin()));
-#endif
-    return dst;
+    return trim_end_ascii<char>(view);
 }
-
-} // namespace codepoint
 
-} // namespace uni
+} // namespace unx
 
 
 // AMALGAMATION: uni_algo/ext/translit/macedonian_to_latin_docs.h
@@ -62748,10 +63702,10 @@ inline std::u32string to_decompose_hangul_u32(char32_t c)
 #include <string>
 #include <string_view>
 
-//!#include "../../ranges.h"
+//!#include "../../ranges_conv.h"
 //!#include "../../internal/ranges_translit.h"
 
-namespace uni::detail::translit {
+namespace una::detail::translit {
 
 // This translit class must be static and internal, use the same desigh for all transliterators.
 class macedonian_to_latin_docs
@@ -62807,26 +63761,26 @@ private:
     {{{{'k','j'}},{{'k','j'}}}},            { },                        { },            {{{{'d','j'}},{{'d','j'}}}}}};
 
     // Cyrilic Unicode Block
-    static bool is_block(char32_t c) { return (c >= 0x0400 && c <= 0x045F); }
-    static std::size_t to_block(char32_t c) { return (c - 0x0400); }
+    static constexpr bool is_block(char32_t c) { return (c >= 0x0400 && c <= 0x045F); }
+    static constexpr std::size_t to_block(char32_t c) { return (c - 0x0400); }
 
 public:
     macedonian_to_latin_docs() = delete;
 
     // Buffer size 2 is enought to translit Macedonian to Latin
     // the smaller the buffer the faster the translit view works.
-    static const std::size_t buf_size = 2;
+    static constexpr std::size_t buf_size = 2;
 
     // The function below is used by the translit view.
     // Translit view is very powerfull it can do everything that
-    // uni::ranges::filter_view and uni::ranges::transform_view can do
+    // una::ranges::filter_view and una::ranges::transform_view can do
     // and much more but it can be dangerous for example it's possible
     // to cause an endless loop when it used improperly so it's important
     // what value must be returned in the function below.
     // This is the reason why the view is not available for a user.
     // Note the function have only one parameter - buffer, you can do whatever
     // you want with the buffer just make sure you return the proper value.
-    static std::size_t buf_func(detail::translit::buffer& buf)
+    static constexpr std::size_t buf_func(detail::translit::buffer& buf)
     {
         // Compose small/capital letters GJE/KJE first.
         // In Macedonian there are only 4 cases when letters can be decomposed
@@ -62920,19 +63874,19 @@ public:
     }
 };
 
-} // namespace uni::detail::translit
+} // namespace una::detail::translit
 
 // Expose translit functions that use the translit view with the translit class above.
 
 namespace unx::translit {
 
 template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
 macedonian_to_latin_docs_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
-    using namespace uni; // NOLINT(google-build-using-namespace)
+    using namespace una; // NOLINT(google-build-using-namespace)
 
-    // Note that we use views from uni::ranges instead of adaptors from uni::views
+    // Note that we use views from una::ranges instead of adaptors from una::views
     // because translit view is internal and doesn't have view adaptor
     // and we want to maximize the compilation speed.
 
@@ -62947,10 +63901,10 @@ macedonian_to_latin_docs_utf8(std::basic_string_view<UTF8> source, const Alloc& 
     return result;
 }
 template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
 macedonian_to_latin_docs_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
-    using namespace uni; // NOLINT(google-build-using-namespace)
+    using namespace una; // NOLINT(google-build-using-namespace)
 
     using tr = detail::translit::macedonian_to_latin_docs;
 
@@ -62962,28 +63916,28 @@ macedonian_to_latin_docs_utf16(std::basic_string_view<UTF16> source, const Alloc
 #endif
     return result;
 }
-inline std::string macedonian_to_latin_docs_utf8(std::string_view source)
+inline uaiw_constexpr std::string macedonian_to_latin_docs_utf8(std::string_view source)
 {
     return macedonian_to_latin_docs_utf8<char>(source);
 }
-inline std::u16string macedonian_to_latin_docs_utf16(std::u16string_view source)
+inline uaiw_constexpr std::u16string macedonian_to_latin_docs_utf16(std::u16string_view source)
 {
     return macedonian_to_latin_docs_utf16<char16_t>(source);
 }
 #if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring macedonian_to_latin_docs_utf16(std::wstring_view source)
+inline uaiw_constexpr std::wstring macedonian_to_latin_docs_utf16(std::wstring_view source)
 {
     return macedonian_to_latin_docs_utf16<wchar_t>(source);
 }
 #endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
 #ifdef __cpp_lib_char8_t
-inline std::u8string macedonian_to_latin_docs_utf8(std::u8string_view source)
+inline uaiw_constexpr std::u8string macedonian_to_latin_docs_utf8(std::u8string_view source)
 {
     return macedonian_to_latin_docs_utf8<char8_t>(source);
 }
 #endif // __cpp_lib_char8_t
 
-} // namespace uni::translit
+} // namespace una::translit
 
 
 // AMALGAMATION: uni_algo/ext/translit/japanese_kana_to_romaji_hepburn.h
@@ -62993,10 +63947,10 @@ inline std::u8string macedonian_to_latin_docs_utf8(std::u8string_view source)
 #include <string>
 #include <string_view>
 
-//!#include "../../ranges.h"
+//!#include "../../ranges_conv.h"
 //!#include "../../internal/ranges_translit.h"
 
-namespace uni::detail::translit {
+namespace una::detail::translit {
 
 class japanese_kana_to_romaji_hepburn
 {
@@ -63030,12 +63984,12 @@ private:
     { },    { },      { },        { },        { },    { },{ },    { },      { },  { },{{'r','y'}},{ },    { },    { },        { },    { },     // 308x
     { },    { },      { },        { },        { },    { },{ },{{'s','h'}},  { },  { },    { },    { },    { },    { },        { },    { }  }}; // 309x
 
-    static bool is_vowel(char32_t c)
+    static constexpr bool is_vowel(char32_t c)
     {
         return c == U'a' || c == U'i' || c == U'u' || c == U'e' || c == U'o' || c == U'y';
     }
 
-    static std::size_t simple_fn(detail::translit::buffer& buf, char32_t c, std::size_t i)
+    static constexpr std::size_t simple_fn(detail::translit::buffer& buf, char32_t c, std::size_t i)
     {
         std::size_t m = 0;
         if (c >= 0x3040 && c <= 0x309F) // Hiragana
@@ -63065,7 +64019,7 @@ private:
         return 1;
     }
 
-    static std::size_t complex_fn(detail::translit::buffer& buf, std::u32string_view view, std::size_t i)
+    static constexpr std::size_t complex_fn(detail::translit::buffer& buf, std::u32string_view view, std::size_t i)
     {
         if (view.size() != 2)
             return 0;
@@ -63125,11 +64079,11 @@ public:
     japanese_kana_to_romaji_hepburn() = delete;
 
     // The buffer size 3 is enough for the algorithm
-    static const std::size_t buf_size = 3;
+    static constexpr std::size_t buf_size = 3;
 
     // Note that this function has additional data parameter prev
     // so a proxy function is required to use it with translit view
-    static std::size_t buf_func(detail::translit::buffer& buf, bool& prev)
+    static constexpr std::size_t buf_func(detail::translit::buffer& buf, bool& prev)
     {
         std::u32string_view view = buf;
 
@@ -63245,15 +64199,15 @@ public:
     }
 };
 
-} // namespace uni::detail::translit
+} // namespace una::detail::translit
 
 namespace unx::translit {
 
 template<typename UTF8, typename Alloc = std::allocator<UTF8>>
-std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
 japanese_kana_to_romaji_hepburn_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
 {
-    using namespace uni; // NOLINT(google-build-using-namespace)
+    using namespace una; // NOLINT(google-build-using-namespace)
 
     using tr = detail::translit::japanese_kana_to_romaji_hepburn;
 
@@ -63269,10 +64223,10 @@ japanese_kana_to_romaji_hepburn_utf8(std::basic_string_view<UTF8> source, const 
     return result;
 }
 template<typename UTF16, typename Alloc = std::allocator<UTF16>>
-std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
 japanese_kana_to_romaji_hepburn_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
 {
-    using namespace uni; // NOLINT(google-build-using-namespace)
+    using namespace una; // NOLINT(google-build-using-namespace)
 
     using tr = detail::translit::japanese_kana_to_romaji_hepburn;
 
@@ -63287,28 +64241,28 @@ japanese_kana_to_romaji_hepburn_utf16(std::basic_string_view<UTF16> source, cons
 #endif
     return result;
 }
-inline std::string japanese_kana_to_romaji_hepburn_utf8(std::string_view source)
+inline uaiw_constexpr std::string japanese_kana_to_romaji_hepburn_utf8(std::string_view source)
 {
     return japanese_kana_to_romaji_hepburn_utf8<char>(source);
 }
-inline std::u16string japanese_kana_to_romaji_hepburn_utf16(std::u16string_view source)
+inline uaiw_constexpr std::u16string japanese_kana_to_romaji_hepburn_utf16(std::u16string_view source)
 {
     return japanese_kana_to_romaji_hepburn_utf16<char16_t>(source);
 }
 #if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
-inline std::wstring japanese_kana_to_romaji_hepburn_utf16(std::wstring_view source)
+inline uaiw_constexpr std::wstring japanese_kana_to_romaji_hepburn_utf16(std::wstring_view source)
 {
     return japanese_kana_to_romaji_hepburn_utf16<wchar_t>(source);
 }
 #endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
 #ifdef __cpp_lib_char8_t
-inline std::u8string utf8_japanese_kana_to_romaji_hepburn(std::u8string_view source)
+inline uaiw_constexpr std::u8string utf8_japanese_kana_to_romaji_hepburn(std::u8string_view source)
 {
     return japanese_kana_to_romaji_hepburn_utf8<char8_t>(source);
 }
 #endif // __cpp_lib_char8_t
 
-} // namespace uni::translit
+} // namespace una::translit
 
 
 #endif // UNI_ALGO_H_AMALGAMATION
