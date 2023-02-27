@@ -7,11 +7,6 @@
 #ifndef UNI_ALGO_H_AMALGAMATION
 #define UNI_ALGO_H_AMALGAMATION
 
-#include <type_traits>
-#include <cstddef>
-
-#include <array>
-
 #define UNI_ALGO_STATIC_DATA
 #define UNI_ALGO_DISABLE_SYSTEM_LOCALE
 
@@ -21,7 +16,7 @@
 // (VERSION % 1000) is the patch version 0..255,
 // (VERSION / 1000 % 1000) is the minor version 0..255,
 // (VERSION / 1000000) is the major version 0..255.
-#define UNI_ALGO_CPP_LIB_VERSION 7000
+#define UNI_ALGO_CPP_LIB_VERSION 7001
 
 // AMALGAMATION: uni_algo/impl/impl_unicode_version.h
 
@@ -48,6 +43,12 @@
 // (VERSION / 1000000) is the major version 1..255.
 
 // Note that una::version namespace can be used to get these values.
+
+// TODO: Rename:
+// UNI_ALGO_DISABLE_BREAK_GRAPHEME -> UNI_ALGO_DISABLE_SEGMENT_GRAPHEME
+// UNI_ALGO_DISABLE_BREAK_WORD -> UNI_ALGO_DISABLE_SEGMENT_WORD
+// UNI_ALGO_DISABLE_SHRINK_TO_FIT -> UNI_ALGO_NO_SHRINK_TO_FIT
+// UNI_ALGO_ENABLE_SAFE_LAYER -> UNI_ALGO_SAFE_LAYER (Not sure about this one)
 
 // Note that you can just add the following defines to your project
 // instead of uncommenting the defines here.
@@ -112,7 +113,10 @@
 
 //#define UNI_ALGO_STATIC_DATA
 // Note that with CMake use UNI_ALGO_HEADER_ONLY=ON option instead.
-// The define can be used to build header-only version of the library.
+// The define can be used for header-only version of the library.
+// Also even when the library was built and installed with
+// CMake option UNI_ALGO_HEADER_ONLY=OFF the define can be used to
+// force header-only version, but treat it as a workaround in this case.
 
 //#define UNI_ALGO_DLL_EXPORT
 //#define UNI_ALGO_DLL_IMPORT
@@ -194,7 +198,7 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 #endif
 
 // C++20 or higher and header-only version is required for constexpr library
-#if defined(UNI_ALGO_STATIC_DATA) && ((__cplusplus >= 202002L) || (_MSVC_LANG >= 202002L))
+#if defined(UNI_ALGO_STATIC_DATA) && (__cplusplus >= 202002L || _MSVC_LANG >= 202002L)
 // NOTE: This include is needed for __cpp_lib_constexpr_string below
 #include <version>
 #if (__cpp_constexpr >= 201907L) && defined(__cpp_lib_constexpr_string) \
@@ -234,6 +238,8 @@ static_assert(std::is_unsigned<type_char32>::value && sizeof(type_char32) >= siz
 #include <array>
 #endif
 
+//!#include "../config.h" // detail::type_codept
+
 namespace una::detail {
 
 namespace safe {
@@ -264,7 +270,7 @@ struct array
                   std::is_same_v<T, char>           ||
                   std::is_same_v<T, unsigned char>  ||
                   std::is_same_v<T, unsigned short> ||
-                  std::is_same_v<T, char32_t>,
+                  std::is_same_v<T, detail::type_codept>,
                  "Low-level must never use disallowed types for arrays");
 
     using value_type      = T;
@@ -343,23 +349,18 @@ public:
         ++it;
         return *this;
     }
-    uaiw_constexpr in operator++(int)
-    {
-        in tmp = *this;
-        ++it;
-        return tmp;
-    }
+    // NOTE: Never ever use postfix operator++ for low-level iterators
+    // because it may cause problems with input iterators.
+    // https://github.com/uni-algo/uni-algo/issues/22
+    //uaiw_constexpr in operator++(int)
     uaiw_constexpr in& operator--()
     {
         --it;
         return *this;
     }
-    uaiw_constexpr in operator--(int)
-    {
-        in tmp = *this;
-        --it;
-        return tmp;
-    }
+    // NOTE: Postfix operator-- is not implemented for consistency with
+    // the previous NOTE but it should not be needed anyway.
+    //uaiw_constexpr in operator--(int)
     uaiw_constexpr in& operator+=(std::ptrdiff_t n)
     {
         it += n;
@@ -48065,7 +48066,8 @@ uaix_static it_in_utf16 iter_utf16(it_in_utf16 first, it_end_utf16 last, type_co
 
     it_in_utf16 src = first;
 
-    type_codept h = (*src++ & 0xFFFF);
+    type_codept h = (*src & 0xFFFF);
+    ++src;
 
     if (uaix_unlikely(h >= 0xD800 && h <= 0xDFFF)) // Surrogate pair
     {
@@ -48079,7 +48081,7 @@ uaix_static it_in_utf16 iter_utf16(it_in_utf16 first, it_end_utf16 last, type_co
                 {
                     type_codept c = ((h - 0xD800) << 10) + (l - 0xDC00) + 0x10000;
                     *codepoint = c;
-                    src++;
+                    ++src;
                     return src;
                 }
             }
@@ -48516,7 +48518,8 @@ uaix_static size_t impl_utf16to8(it_in_utf16 first, it_end_utf16 last, it_out_ut
 
     while (src != last)
     {
-        type_codept h = (*src++ & 0xFFFF);
+        type_codept h = (*src & 0xFFFF);
+        ++src;
 
         if (h <= 0x7F)
         {
@@ -48548,7 +48551,7 @@ uaix_static size_t impl_utf16to8(it_in_utf16 first, it_end_utf16 last, it_out_ut
                         *dst++ = (type_char8)(0x80 | ((c >> 6)  & 0x3F));
                         *dst++ = (type_char8)(0x80 |  (c        & 0x3F));
 
-                        src++;
+                        ++src;
                         continue;
                     }
                 }
@@ -48722,7 +48725,8 @@ uaix_static size_t impl_utf32to8(it_in_utf32 first, it_end_utf32 last, it_out_ut
 
     while (src != last)
     {
-        type_codept c = ((type_codept)*src++ & 0xFFFFFFFF);
+        type_codept c = ((type_codept)*src & 0xFFFFFFFF);
+        ++src;
 
         if (c <= 0x7F)
         {
@@ -48786,7 +48790,8 @@ uaix_static size_t impl_utf16to32(it_in_utf16 first, it_end_utf16 last, it_out_u
 
     while (src != last)
     {
-        type_codept h = (*src++ & 0xFFFF);
+        type_codept h = (*src & 0xFFFF);
+        ++src;
 
         if (h >= 0xD800 && h <= 0xDFFF) // Surrogate pair
         {
@@ -48802,7 +48807,7 @@ uaix_static size_t impl_utf16to32(it_in_utf16 first, it_end_utf16 last, it_out_u
 
                         *dst++ = (type_char32)c;
 
-                        src++;
+                        ++src;
                         continue;
                     }
                 }
@@ -48840,7 +48845,8 @@ uaix_static size_t impl_utf32to16(it_in_utf32 first, it_end_utf32 last, it_out_u
 
     while (src != last)
     {
-        type_codept c = ((type_codept)*src++ & 0xFFFFFFFF);
+        type_codept c = ((type_codept)*src & 0xFFFFFFFF);
+        ++src;
 
         if (c <= 0xFFFF)
         {
@@ -48996,7 +49002,8 @@ uaix_static bool impl_is_valid_utf16(it_in_utf16 first, it_end_utf16 last, size_
 
     while (src != last)
     {
-        type_codept h = (*src++ & 0xFFFF);
+        type_codept h = (*src & 0xFFFF);
+        ++src;
 
         if (h <= 0x7F)
         { // NOLINT(bugprone-branch-clone)
@@ -49016,7 +49023,7 @@ uaix_static bool impl_is_valid_utf16(it_in_utf16 first, it_end_utf16 last, size_
 
                     if (l >= 0xDC00 && l <= 0xDFFF) // Low surrogate is in range
                     {
-                        src++;
+                        ++src;
                         continue;
                     }
                 }
@@ -49049,7 +49056,8 @@ uaix_static bool impl_is_valid_utf32(it_in_utf32 first, it_end_utf32 last, size_
 
     while (src != last)
     {
-        type_codept c = ((type_codept)*src++ & 0xFFFFFFFF);
+        type_codept c = ((type_codept)*src & 0xFFFFFFFF);
+        ++src;
 
         if (c <= 0x7F)
         { // NOLINT(bugprone-branch-clone)
@@ -61622,12 +61630,6 @@ inline constexpr detail::rng::adaptor_utf16 utf16;
 
 namespace ranges {
 
-// These user-defined CTAD guides are important
-// the problem the code compiles in most cases and works perfectly fine
-// even if there is a mistake here but there will be extra move/copy operations
-// for the object we are viewing so the performance will be much worse
-// It is handled by test/test_ranges.h -> test_ranges_ctad()
-
 template<class Range>
 utf8_view(Range&&) -> utf8_view<views::all_t<Range>>;
 
@@ -61700,7 +61702,10 @@ private:
         uaiw_constexpr void iter_func_norm_nfc()
         {
             if (!detail::inline_norm_iter_ready(&state))
-                while (it_pos != std::end(parent->range) && !detail::inline_norm_iter_nfc(&state, *it_pos++));
+            {
+                for (bool stop = false; !stop && it_pos != std::end(parent->range); ++it_pos)
+                    stop = detail::inline_norm_iter_nfc(&state, *it_pos);
+            }
             if (!detail::inline_norm_iter_next_comp(&state, &codepoint))
                 stream_end = true;
         }
@@ -61793,7 +61798,10 @@ private:
         uaiw_constexpr void iter_func_norm_nfd()
         {
             if (!detail::inline_norm_iter_ready(&state))
-                while (it_pos != std::end(parent->range) && !detail::inline_norm_iter_nfd(&state, *it_pos++));
+            {
+                for (bool stop = false; !stop && it_pos != std::end(parent->range); ++it_pos)
+                    stop = detail::inline_norm_iter_nfd(&state, *it_pos);
+            }
             if (!detail::inline_norm_iter_next_decomp(&state, &codepoint))
                 stream_end = true;
         }
@@ -61888,7 +61896,10 @@ private:
         uaiw_constexpr void iter_func_norm_nfkc()
         {
             if (!detail::inline_norm_iter_ready(&state))
-                while (it_pos != std::end(parent->range) && !detail::inline_norm_iter_nfkc(&state, *it_pos++));
+            {
+                for (bool stop = false; !stop && it_pos != std::end(parent->range); ++it_pos)
+                    stop = detail::inline_norm_iter_nfkc(&state, *it_pos);
+            }
             if (!detail::inline_norm_iter_next_comp(&state, &codepoint))
                 stream_end = true;
         }
@@ -61981,7 +61992,10 @@ private:
         uaiw_constexpr void iter_func_norm_nfkd()
         {
             if (!detail::inline_norm_iter_ready(&state))
-                while (it_pos != std::end(parent->range) && !detail::inline_norm_iter_nfkd(&state, *it_pos++));
+            {
+                for (bool stop = false; !stop && it_pos != std::end(parent->range); ++it_pos)
+                    stop = detail::inline_norm_iter_nfkd(&state, *it_pos);
+            }
             if (!detail::inline_norm_iter_next_decomp(&state, &codepoint))
                 stream_end = true;
         }
