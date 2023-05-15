@@ -18,7 +18,7 @@
 // (VERSION / 1000000) is the major version 0..255.
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage, modernize-macro-to-enum)
-#define UNI_ALGO_CPP_LIB_VERSION 8000
+#define UNI_ALGO_CPP_LIB_VERSION 8001
 
 // AMALGAMATION: uni_algo/impl/impl_unicode_version.h
 
@@ -62,7 +62,7 @@
 //#define UNI_ALGO_DISABLE_SEGMENT_WORD
 // Disable Word segmentation module.
 // Reduces Unicode data size by ~35 KB.
-// Note that if Break Word module is disabled title case functions
+// Note that if Word segmentation module is disabled title case functions
 // in Case module will be disabled too because it is needed for them.
 
 //#define UNI_ALGO_DISABLE_COLLATE
@@ -94,7 +94,7 @@
 // The define is only usefull if you need compatibility with legacy implementations
 // that don't expect that an UTF-16 string can grow in size.
 // Note that UTF-8 string still can grow in size even with simple case mapping.
-// Can be used to achive the maximum performance when you are 100% sure that you
+// Can be used to achieve the maximum performance when you are 100% sure that you
 // will be using the library with languages that don't need full case mapping.
 // In other words the define must be avoided at all cost.
 // The define affects only Case module.
@@ -309,17 +309,6 @@ private:
 public:
     uaiw_constexpr end() = delete;
     uaiw_constexpr explicit end(Iter iter) : it{iter} {}
-    // NOTE: The following is only used by fast ASCII functions
-    uaiw_constexpr end& operator-=(std::ptrdiff_t n)
-    {
-        it -= n;
-        return *this;
-    }
-    friend uaiw_constexpr end operator-(end x, std::ptrdiff_t n)
-    {
-        x -= n;
-        return x;
-    }
 };
 
 template<class Iter>
@@ -387,7 +376,7 @@ public:
     friend uaiw_constexpr bool operator==(const in& x, const safe::end<Iter>& y) { return x.it == friend_it(y); }
     friend uaiw_constexpr bool operator!=(const in& x, const safe::end<Iter>& y) { return x.it != friend_it(y); }
     // NOTE: The following is only used by fast ASCII functions
-    friend uaiw_constexpr bool operator<=(const in& x, const safe::end<Iter>& y) { return x.it <= friend_it(y); }
+    friend uaiw_constexpr std::ptrdiff_t operator-(const safe::end<Iter>& x, const in& y) { return friend_it(x) - y.it; }
 };
 
 template<class Iter>
@@ -56454,7 +56443,7 @@ uaix_static bool fast_ascii_utf8to16(it_in_utf8* s, it_end_utf8 last, it_out_utf
 
     bool processed = false;
 
-    while (*s <= last - 4) // NOTE: 1% faster than while (*s + 4 <= last)
+    for (it_in_utf8 end = *s + (last - *s) - ((last - *s) % 4); *s != end; *s += 4)
     {
         // There are 3 ways to perform unaligned load:
         // 1. uint32_t = *((uint32_t*)uint8_t*); // Unsafe and not portable garbage.
@@ -56475,9 +56464,6 @@ uaix_static bool fast_ascii_utf8to16(it_in_utf8* s, it_end_utf8 last, it_out_utf
         if ((c & 0x80808080) != 0)
             break;
 
-        *s += 4;
-        processed = true;
-
         // This is not unaligned store even so it looks like it
         // we just do the usual thing here.
         *(*dst)++ = (type_char16)(c & 0xFF);
@@ -56492,6 +56478,8 @@ uaix_static bool fast_ascii_utf8to16(it_in_utf8* s, it_end_utf8 last, it_out_utf
         //*(*dst+2) = (impl_char8)((c >> 16) & 0xFF);
         //*(*dst+3) = (impl_char8)((c >> 24) & 0xFF);
         //*dst += 4;
+
+        processed = true;
     }
 
     return processed;
@@ -56514,7 +56502,7 @@ uaix_static bool fast_ascii_utf8to32(it_in_utf8* s, it_end_utf8 last, it_out_utf
 {
     bool processed = false;
 
-    while (*s <= last - 4)
+    for (it_in_utf8 end = *s + (last - *s) - ((last - *s) % 4); *s != end; *s += 4)
     {
         type_codept c = 0;
         c |= ((type_codept)*(*s+0) & 0xFF);
@@ -56525,13 +56513,12 @@ uaix_static bool fast_ascii_utf8to32(it_in_utf8* s, it_end_utf8 last, it_out_utf
         if ((c & 0x80808080) != 0)
             break;
 
-        *s += 4;
-        processed = true;
-
         *(*dst)++ = (type_char32)(c & 0xFF);
         *(*dst)++ = (type_char32)((c >> 8) & 0xFF);
         *(*dst)++ = (type_char32)((c >> 16) & 0xFF);
         *(*dst)++ = (type_char32)((c >> 24) & 0xFF);
+
+        processed = true;
     }
 
     return processed;
@@ -56968,6 +56955,9 @@ UNI_ALGO_IMPL_NAMESPACE_BEGIN
 
 // See generator_segment_word in gen/gen.h
 
+// NOTE: The order of the word properties is important here:
+// 1. New lines, punctuation, space etc. must be in this order:
+// CR/LF/Newline -> Extend -> ZWJ -> Format -> Punctuation -> WSegSpace
 uaix_const type_codept prop_WB_CR                    = 1;
 uaix_const type_codept prop_WB_LF                    = 2;
 uaix_const type_codept prop_WB_Newline               = 3;
@@ -56981,8 +56971,8 @@ uaix_const type_codept prop_WB_MidLetter             = 10;
 uaix_const type_codept prop_WB_MidNum                = 11;
 uaix_const type_codept prop_WB_ExtendNumLet          = 12;
 uaix_const type_codept prop_WB_WSegSpace             = 13;
-// For word properties everything else that can be considered a word
-// must be in this order: Numeric -> Alphabetic -> Kana -> Ideographic -> Emoji
+// 2. Everything else that can be considered a word must be in this order:
+// Numeric -> Alphabetic -> Kana -> Ideographic -> Emoji
 uaix_const type_codept prop_WB_Numeric               = 14;
 uaix_const type_codept prop_WB_ALetter               = 15;
 uaix_const type_codept prop_WB_Hebrew_Letter         = 16;
@@ -56990,7 +56980,8 @@ uaix_const type_codept prop_WX_Remaining_Alphabetic  = 17;
 uaix_const type_codept prop_WB_Katakana              = 18;
 uaix_const type_codept prop_WX_Remaining_Hiragana    = 19;
 uaix_const type_codept prop_WX_Remaining_Ideographic = 20;
-uaix_const type_codept prop_WB_Regional_Indicator    = 21; // Must be the last
+// 3. Regional_Indicator must be the last because it can be considered emoji
+uaix_const type_codept prop_WB_Regional_Indicator    = 21;
 
 uaix_const int state_segment_word_begin    = 0;
 uaix_const int state_segment_word_continue = 1;
@@ -61741,6 +61732,8 @@ UNI_ALGO_IMPL_NAMESPACE_BEGIN
 uaix_always_inline
 uaix_static type_codept impl_script_get_script(type_codept c)
 {
+    // https://www.unicode.org/reports/tr24/tr24-34.html#Script
+
     // Treat all invalid as replacement character (U+FFFD)
     if (c > 0x10FFFF)
         return 0x5A797979; // Zyyy (Common script)
@@ -61756,6 +61749,8 @@ uaix_static type_codept impl_script_get_script(type_codept c)
 uaix_always_inline
 uaix_static bool impl_script_has_script(type_codept c, type_codept script)
 {
+    // https://www.unicode.org/reports/tr24/tr24-34.html#Script_Extensions
+
     // Treat all invalid as replacement character (U+FFFD)
     if (c > 0x10FFFF)
         return (script == 0x5A797979) ? true : false; // Zyyy (Common script)
@@ -64557,7 +64552,7 @@ using is_range_contiguous = std::conditional_t<std::ranges::contiguous_range<Ran
 #endif
 
 // In C++17 std::string_view doesn't have iterators pair constructor
-// so we use this a bit ugly approach to make it work. It is only used in break ranges.
+// so we use this a bit ugly approach to make it work. It is only used in text segmentation ranges.
 // This helper function requeries contiguous range, but no checks here must be checked where used.
 #if !defined(__cpp_lib_ranges) || defined(UNI_ALGO_FORCE_CPP17_RANGES)
 template<class StringViewResult, class Range, class Iter>
@@ -66991,7 +66986,7 @@ public:
     // property data in type_codept because everything related to code point uses it there.
     // --- Added later ---
     // Actually it might be better to redesign the low-level for this, there are some parts
-    // of the low-level where it will make structs smaller too for example breaks.
+    // of the low-level where it will make structs smaller too for example text segmentation.
 
     // https://www.unicode.org/reports/tr44/#General_Category_Values
 
