@@ -18,7 +18,7 @@
 // (VERSION / 1000000) is the major version 0..255.
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage, modernize-macro-to-enum)
-#define UNI_ALGO_CPP_LIB_VERSION 8001
+#define UNI_ALGO_CPP_LIB_VERSION 8002
 
 // AMALGAMATION: uni_algo/impl/impl_unicode_version.h
 
@@ -55650,7 +55650,7 @@ uaix_always_inline_tmpl
 uaix_static bool fast_ascii_utf8to32(it_in_utf8* s, it_end_utf8 last, it_out_utf32* dst);
 
 #ifdef __cplusplus
-template<typename it_in_utf8, typename it_end_utf8, typename it_out_utf16>
+template<typename it_in_utf8, typename it_end_utf8, typename it_out_utf16, bool contiguous = true>
 #endif
 uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf16 result, size_t* const error)
 {
@@ -55686,7 +55686,10 @@ uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf1
     it_in_utf8 prev = s;
     it_out_utf16 dst = result;
 
-    fast_ascii_utf8to16(&s, last, &dst);
+#ifdef __cplusplus
+    if constexpr (contiguous)
+#endif
+        fast_ascii_utf8to16(&s, last, &dst);
 
     while (s != last)
     {
@@ -55701,9 +55704,12 @@ uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf1
             // but it can degrade the performance of UTF-8 conversion in some cases.
             // Note that uaix_likely must be removed too for better performance.
 #if 0
-            if (fast_ascii_utf8to16(&s, last, &dst))
-                continue;
+#ifdef __cplusplus
+            if constexpr (contiguous)
 #endif
+                if (fast_ascii_utf8to16(&s, last, &dst))
+                    continue;
+#endif // 0
 
             *dst++ = (type_char16)c;
             ++s;
@@ -55839,7 +55845,7 @@ uaix_static size_t impl_utf8to16(it_in_utf8 first, it_end_utf8 last, it_out_utf1
 }
 
 #ifdef __cplusplus
-template<typename it_in_utf16, typename it_end_utf16, typename it_out_utf8>
+template<typename it_in_utf16, typename it_end_utf16, typename it_out_utf8, bool = true>
 #endif
 uaix_static size_t impl_utf16to8(it_in_utf16 first, it_end_utf16 last, it_out_utf8 result, size_t* const error)
 {
@@ -55915,7 +55921,7 @@ uaix_static size_t impl_utf16to8(it_in_utf16 first, it_end_utf16 last, it_out_ut
 }
 
 #ifdef __cplusplus
-template<typename it_in_utf8, typename it_end_utf8, typename it_out_utf32>
+template<typename it_in_utf8, typename it_end_utf8, typename it_out_utf32, bool contiguous = true>
 #endif
 uaix_static size_t impl_utf8to32(it_in_utf8 first, it_end_utf8 last, it_out_utf32 result, size_t* const error)
 {
@@ -55923,7 +55929,10 @@ uaix_static size_t impl_utf8to32(it_in_utf8 first, it_end_utf8 last, it_out_utf3
     it_in_utf8 prev = s;
     it_out_utf32 dst = result;
 
-    fast_ascii_utf8to32(&s, last, &dst);
+#ifdef __cplusplus
+    if constexpr (contiguous)
+#endif
+        fast_ascii_utf8to32(&s, last, &dst);
 
     while (s != last)
     {
@@ -56052,7 +56061,7 @@ uaix_static size_t impl_utf8to32(it_in_utf8 first, it_end_utf8 last, it_out_utf3
 }
 
 #ifdef __cplusplus
-template<typename it_in_utf32, typename it_end_utf32, typename it_out_utf8>
+template<typename it_in_utf32, typename it_end_utf32, typename it_out_utf8, bool = true>
 #endif
 uaix_static size_t impl_utf32to8(it_in_utf32 first, it_end_utf32 last, it_out_utf8 result, size_t* const error)
 {
@@ -56117,7 +56126,7 @@ uaix_static size_t impl_utf32to8(it_in_utf32 first, it_end_utf32 last, it_out_ut
 }
 
 #ifdef __cplusplus
-template<typename it_in_utf16, typename it_end_utf16, typename it_out_utf32>
+template<typename it_in_utf16, typename it_end_utf16, typename it_out_utf32, bool = true>
 #endif
 uaix_static size_t impl_utf16to32(it_in_utf16 first, it_end_utf16 last, it_out_utf32 result, size_t* const error)
 {
@@ -56172,7 +56181,7 @@ uaix_static size_t impl_utf16to32(it_in_utf16 first, it_end_utf16 last, it_out_u
 }
 
 #ifdef __cplusplus
-template<typename it_in_utf32, typename it_end_utf32, typename it_out_utf16>
+template<typename it_in_utf32, typename it_end_utf32, typename it_out_utf16, bool = true>
 #endif
 uaix_static size_t impl_utf32to16(it_in_utf32 first, it_end_utf32 last, it_out_utf16 result, size_t* const error)
 {
@@ -56464,15 +56473,14 @@ uaix_static bool fast_ascii_utf8to16(it_in_utf8* s, it_end_utf8 last, it_out_utf
         if ((c & 0x80808080) != 0)
             break;
 
-        // This is not unaligned store even so it looks like it
-        // we just do the usual thing here.
+        // This is not unaligned store even though it looks like it, we just do the usual thing here.
         *(*dst)++ = (type_char16)(c & 0xFF);
         *(*dst)++ = (type_char16)((c >> 8) & 0xFF);
         *(*dst)++ = (type_char16)((c >> 16) & 0xFF);
         *(*dst)++ = (type_char16)((c >> 24) & 0xFF);
 
         // This is how unaligned store should look like it can be used for potential utf8to8 function.
-        // Even thought a compiler probably optimize both variants the same for such function.
+        // Even though a compiler probably optimize both variants the same for such function.
         //*(*dst+0) = (impl_char8)(c & 0xFF);
         //*(*dst+1) = (impl_char8)((c >> 8) & 0xFF);
         //*(*dst+2) = (impl_char8)((c >> 16) & 0xFF);
@@ -56487,7 +56495,7 @@ uaix_static bool fast_ascii_utf8to16(it_in_utf8* s, it_end_utf8 last, it_out_utf
     // NOTE from mg152:
     // In my observations MSVC never optimize manual load, GCC and Clang optimize it starting with version 5.
     // See test/random_stuff/unaligned_load_store.h to check which compiler is able to optimize it properly.
-    // It is possible to make it faster by using long long and processing by 8 bytes or even insintrics like _mm_loadu_si128
+    // It is possible to make it faster by using long long and processing by 8 bytes or even intrinsics like _mm_loadu_si128
     // but it will be much less portable and the number of defines to handle it will be enormous.
     // So the basic optimization should be enough it's over optimization anyway I just did it for fun. At least it's always safe.
 
@@ -62161,10 +62169,11 @@ uaix_const size_t impl_x_norm_to_unaccent_utf16 = 3;  // tag_unicode_stable_valu
 // Return values for normalization detection functions
 uaix_const int impl_norm_is_yes                 = 0;
 uaix_const int impl_norm_is_ill_formed          = 8;
-//uaix_const int impl_norm_is_not_stream_safe   = 16; // Reserved
-//uaix_const int impl_norm_is_no                = 1;  // Reserved
-//uaix_const int impl_norm_is_maybe             = 2;  // Reserved
-uaix_const int norm_is_no_or_maybe              = 3;  // Can be changed in the future. Must never be used in a wrapper.
+uaix_const int impl_norm_is_not_canonical_order = 16;
+uaix_const int impl_norm_is_not_stream_safe     = 32;
+//uaix_const int impl_norm_is_no                = 1; // Reserved
+//uaix_const int impl_norm_is_maybe             = 2; // Reserved
+uaix_const int norm_is_no_or_maybe              = 3; // Can be changed in the future. Must never be used in a wrapper.
 
 struct norm_buffer
 {
@@ -62299,22 +62308,29 @@ uaix_const type_codept norm_bit_nfkc = 10;
 uaix_const type_codept norm_bit_nfkd = 11;
 #endif
 
+uaix_const type_codept norm_bound_nfc  = 0x0300;
+uaix_const type_codept norm_bound_nfd  = 0x00C0;
+#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
+uaix_const type_codept norm_bound_nfkc = 0x00A0;
+uaix_const type_codept norm_bound_nfkd = 0x00A0;
+#endif
+
 uaix_always_inline
-uaix_static bool stages_qc_yes_impl(type_codept ccc_qc, type_codept bit)
+uaix_static bool stages_ccc_qc_yes(type_codept ccc_qc, type_codept bit)
 {
     // Canonical_Combining_Class=0 && Quick_Check=Yes (!Quick_Check=No && !Quick_Check=Maybe)
     return (ccc_qc & 0xFF) == 0 && !(ccc_qc & (type_codept)1 << bit);
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_is_impl(type_codept ccc_qc, type_codept bit)
+uaix_static bool stages_ccc_qc_detect(type_codept ccc_qc, type_codept bit)
 {
     // Quick_Check=Yes (!Quick_Check=No && !Quick_Check=Maybe)
     return !(ccc_qc & (type_codept)1 << bit);
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_ns_impl(type_codept ccc_qc, size_t* const count_ns)
+uaix_static bool stages_ccc_qc_ns(type_codept ccc_qc, size_t* const count_ns)
 {
     // https://unicode.org/reports/tr15/#Stream_Safe_Text_Format
 
@@ -62322,121 +62338,50 @@ uaix_static bool stages_qc_yes_ns_impl(type_codept ccc_qc, size_t* const count_n
     {
         *count_ns += ccc_qc >> 14;
         if (*count_ns > impl_max_norm_non_starters)
-            return true;
+            return false;
     }
     else
     {
         *count_ns = ccc_qc >> 12; // Trailing non-starters in NFKD
     }
-    return false;
+    return true;
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_ns_nfc(type_codept c, size_t* const count_ns)
+uaix_static bool stages_qc_yes_ns(type_codept c, size_t* const count_ns, type_codept norm_bit)
 {
-    /* Note that we always use NFKD lower bound in these
-     * functions because we need to count initial/trailing
+    /* Note that we always use NFKD lower bound in this
+     * function because we need to count initial/trailing
      * non-starters in NFKD for Stream-Safe Text Process.
      * This disallow us to use NFC lower bound for example,
      * that is much higher, to achive a better performance,
      * but it cannot be done other way.
-     * We still can use real lower bounds in
-     * normalization detection functions below.
-     * Note: lower bound means everything below that has
+     * Note that we can still use real lower bounds
+     * in normalization detection functions.
+     * NOTE: Lower bound means everything below that has
      * Quick_Check=Yes and Canonical_Combining_Class=0.
      */
 
-    if (c >= 0x00A0) // NFKD lower bound
+    if (c >= norm_bound_nfkd) // NFKD lower bound
     {
         const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-        if (stages_qc_yes_ns_impl(ccc_qc, count_ns))
+        if (!stages_ccc_qc_ns(ccc_qc, count_ns))
             return false;
-        return stages_qc_yes_impl(ccc_qc, norm_bit_nfc);
+        return stages_ccc_qc_yes(ccc_qc, norm_bit);
     }
     *count_ns = 0;
     return true;
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_ns_nfd(type_codept c, size_t* const count_ns)
-{
-    if (c >= 0x00A0) // NFKD lower bound
-    {
-        const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-        if (stages_qc_yes_ns_impl(ccc_qc, count_ns))
-            return false;
-        return stages_qc_yes_impl(ccc_qc, norm_bit_nfd);
-    }
-    *count_ns = 0;
-    return true;
-}
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_ns_nfkc(type_codept c, size_t* const count_ns)
-{
-    if (c >= 0x00A0) // NFKD lower bound
-    {
-        const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-        if (stages_qc_yes_ns_impl(ccc_qc, count_ns))
-            return false;
-        return stages_qc_yes_impl(ccc_qc, norm_bit_nfkc);
-    }
-    *count_ns = 0;
-    return true;
-}
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_ns_nfkd(type_codept c, size_t* const count_ns)
-{
-    if (c >= 0x00A0) // NFKD lower bound
-    {
-        const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-        if (stages_qc_yes_ns_impl(ccc_qc, count_ns))
-            return false;
-        return stages_qc_yes_impl(ccc_qc, norm_bit_nfkd);
-    }
-    *count_ns = 0;
-    return true;
-}
-
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_nfc(type_codept c)
+uaix_static bool stages_qc_yes(type_codept c, type_codept norm_bit)
 {
     const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-    return stages_qc_yes_impl(ccc_qc, norm_bit_nfc);
+    return stages_ccc_qc_yes(ccc_qc, norm_bit);
 }
 
 uaix_always_inline
-uaix_static bool stages_qc_yes_nfd(type_codept c)
-{
-    const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-    return stages_qc_yes_impl(ccc_qc, norm_bit_nfd);
-}
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_nfkc(type_codept c)
-{
-    const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-    return stages_qc_yes_impl(ccc_qc, norm_bit_nfkc);
-}
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_nfkd(type_codept c)
-{
-    const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-    return stages_qc_yes_impl(ccc_qc, norm_bit_nfkd);
-}
-
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_is_ccc_impl(type_codept ccc_qc, unsigned char* const last_ccc)
+uaix_static bool stages_ccc_qc_order(type_codept ccc_qc, unsigned char* const last_ccc)
 {
     // https://unicode.org/reports/tr15/#Detecting_Normalization_Forms
     // Note: "if (Character.isSupplementaryCodePoint(ch)) ++i;"
@@ -62452,66 +62397,6 @@ uaix_static bool stages_qc_yes_is_ccc_impl(type_codept ccc_qc, unsigned char* co
     *last_ccc = ccc;
     return true;
 }
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_is_nfc(type_codept c, unsigned char* const last_ccc)
-{
-    if (c >= 0x0300) // NFC lower bound
-    {
-        const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-        if (!stages_qc_yes_is_ccc_impl(ccc_qc, last_ccc))
-            return false;
-        return stages_qc_yes_is_impl(ccc_qc, norm_bit_nfc);
-    }
-    *last_ccc = 0;
-    return true;
-}
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_is_nfd(type_codept c, unsigned char* const last_ccc)
-{
-    if (c >= 0x00C0) // NFD lower bound
-    {
-        const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-        if (!stages_qc_yes_is_ccc_impl(ccc_qc, last_ccc))
-            return false;
-        return stages_qc_yes_is_impl(ccc_qc, norm_bit_nfd);
-    }
-    *last_ccc = 0;
-    return true;
-}
-
-#ifndef UNI_ALGO_DISABLE_NFKC_NFKD
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_is_nfkc(type_codept c, unsigned char* const last_ccc)
-{
-    if (c >= 0x00A0) // NFKC lower bound
-    {
-        const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-        if (!stages_qc_yes_is_ccc_impl(ccc_qc, last_ccc))
-            return false;
-        return stages_qc_yes_is_impl(ccc_qc, norm_bit_nfkc);
-    }
-    *last_ccc = 0;
-    return true;
-}
-
-uaix_always_inline
-uaix_static bool stages_qc_yes_is_nfkd(type_codept c, unsigned char* const last_ccc)
-{
-    if (c >= 0x00A0) // NFKD lower bound
-    {
-        const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
-        if (!stages_qc_yes_is_ccc_impl(ccc_qc, last_ccc))
-            return false;
-        return stages_qc_yes_is_impl(ccc_qc, norm_bit_nfkd);
-    }
-    *last_ccc = 0;
-    return true;
-}
-
-#endif // UNI_ALGO_DISABLE_NFKC_NFKD
 
 uaix_always_inline
 uaix_static void norm_order(struct norm_buffer* const buffer, size_t size)
@@ -62759,7 +62644,7 @@ uaix_static bool norm_decomp_nfc(type_codept c, struct norm_buffer* const buffer
             {
                 buffer->cps[m->size] = stages_decomp_nfd_cp(offset, i);
                 buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
-                if (stages_qc_yes_nfc(buffer->cps[m->size]))
+                if (stages_qc_yes(buffer->cps[m->size], norm_bit_nfc))
                     m->last_qc = m->size;
             }
         }
@@ -62771,7 +62656,7 @@ uaix_static bool norm_decomp_nfc(type_codept c, struct norm_buffer* const buffer
     // in some cases we can stuck in slow loop a bit longer than needed and
     // we need the check to avoid it. This does not affect behaviour.
     // Test string: "\x005A\x0301\x0179\x0179\x0179\x0179\x0179"
-    if (stages_qc_yes_nfc(c))
+    if (stages_qc_yes(c, norm_bit_nfc))
     {
         buffer->cps[m->size] = c;
         buffer->ccc[m->size] = stages_ccc(c);
@@ -62785,7 +62670,7 @@ uaix_static bool norm_decomp_nfc(type_codept c, struct norm_buffer* const buffer
         {
             buffer->cps[m->size] = c;
             buffer->ccc[m->size] = stages_ccc(c);
-            if (stages_qc_yes_nfc(c))
+            if (stages_qc_yes(c, norm_bit_nfc))
                 m->last_qc = m->size;
             ++m->size;
         }
@@ -62796,7 +62681,7 @@ uaix_static bool norm_decomp_nfc(type_codept c, struct norm_buffer* const buffer
             {
                 buffer->cps[m->size] = stages_decomp_nfd_cp(offset, i);
                 buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
-                if (stages_qc_yes_nfc(buffer->cps[m->size]))
+                if (stages_qc_yes(buffer->cps[m->size], norm_bit_nfc))
                     m->last_qc = m->size;
             }
         }
@@ -62825,7 +62710,7 @@ uaix_static bool norm_decomp_nfd(type_codept c, struct norm_buffer* const buffer
         {
             buffer->cps[m->size] = c;
             buffer->ccc[m->size] = stages_ccc(c);
-            if (stages_qc_yes_nfd(c))
+            if (stages_qc_yes(c, norm_bit_nfd))
                 m->last_qc = m->size;
             ++m->size;
         }
@@ -62836,7 +62721,7 @@ uaix_static bool norm_decomp_nfd(type_codept c, struct norm_buffer* const buffer
             {
                 buffer->cps[m->size] = stages_decomp_nfd_cp(offset, i);
                 buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
-                if (stages_qc_yes_nfd(buffer->cps[m->size]))
+                if (stages_qc_yes(buffer->cps[m->size], norm_bit_nfd))
                     m->last_qc = m->size;
             }
         }
@@ -62865,13 +62750,13 @@ uaix_static bool norm_decomp_nfkc(type_codept c, struct norm_buffer* const buffe
             {
                 buffer->cps[m->size] = stages_decomp_nfkd_cp(offset, i);
                 buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
-                if (stages_qc_yes_nfkc(buffer->cps[m->size]))
+                if (stages_qc_yes(buffer->cps[m->size], norm_bit_nfkc))
                     m->last_qc = m->size;
             }
         }
     }
 
-    if (stages_qc_yes_nfkc(c))
+    if (stages_qc_yes(c, norm_bit_nfkc))
     {
         buffer->cps[m->size] = c;
         buffer->ccc[m->size] = stages_ccc(c);
@@ -62885,7 +62770,7 @@ uaix_static bool norm_decomp_nfkc(type_codept c, struct norm_buffer* const buffe
         {
             buffer->cps[m->size] = c;
             buffer->ccc[m->size] = stages_ccc(c);
-            if (stages_qc_yes_nfkc(c))
+            if (stages_qc_yes(c, norm_bit_nfkc))
                 m->last_qc = m->size;
             ++m->size;
         }
@@ -62896,7 +62781,7 @@ uaix_static bool norm_decomp_nfkc(type_codept c, struct norm_buffer* const buffe
             {
                 buffer->cps[m->size] = stages_decomp_nfkd_cp(offset, i);
                 buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
-                if (stages_qc_yes_nfkc(buffer->cps[m->size]))
+                if (stages_qc_yes(buffer->cps[m->size], norm_bit_nfkc))
                     m->last_qc = m->size;
             }
         }
@@ -62925,7 +62810,7 @@ uaix_static bool norm_decomp_nfkd(type_codept c, struct norm_buffer* const buffe
         {
             buffer->cps[m->size] = c;
             buffer->ccc[m->size] = stages_ccc(c);
-            if (stages_qc_yes_nfkd(c))
+            if (stages_qc_yes(c, norm_bit_nfkd))
                 m->last_qc = m->size;
             ++m->size;
         }
@@ -62936,7 +62821,7 @@ uaix_static bool norm_decomp_nfkd(type_codept c, struct norm_buffer* const buffe
             {
                 buffer->cps[m->size] = stages_decomp_nfkd_cp(offset, i);
                 buffer->ccc[m->size] = stages_ccc(buffer->cps[m->size]);
-                if (stages_qc_yes_nfkd(buffer->cps[m->size]))
+                if (stages_qc_yes(buffer->cps[m->size], norm_bit_nfkd))
                     m->last_qc = m->size;
             }
         }
@@ -62964,7 +62849,7 @@ uaix_static bool norm_decomp_unaccent(type_codept c, struct norm_buffer* const b
         {
             buffer->cps[m->size] = c;
             buffer->ccc[m->size] = stages_ccc(c);
-            if (stages_qc_yes_nfd(c))
+            if (stages_qc_yes(c, norm_bit_nfd))
                 m->last_qc = m->size;
             ++m->size;
         }
@@ -62979,7 +62864,7 @@ uaix_static bool norm_decomp_unaccent(type_codept c, struct norm_buffer* const b
             {
                 buffer->cps[m->size] = cp;
                 buffer->ccc[m->size] = stages_ccc(cp);
-                if (stages_qc_yes_nfd(cp))
+                if (stages_qc_yes(cp, norm_bit_nfd))
                     m->last_qc = m->size;
                 ++m->size;
             }
@@ -63036,7 +62921,7 @@ uaix_static size_t impl_norm_to_nfc_utf8(it_in_utf8 first, it_end_utf8 last, it_
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfc(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfc)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63094,7 +62979,7 @@ uaix_static size_t impl_norm_to_nfd_utf8(it_in_utf8 first, it_end_utf8 last, it_
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfd(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfd)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63150,7 +63035,7 @@ uaix_static size_t impl_norm_to_nfkc_utf8(it_in_utf8 first, it_end_utf8 last, it
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfkc(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfkc)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63208,7 +63093,7 @@ uaix_static size_t impl_norm_to_nfkd_utf8(it_in_utf8 first, it_end_utf8 last, it
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfkd(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfkd)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63266,7 +63151,7 @@ uaix_static size_t impl_norm_to_unaccent_utf8(it_in_utf8 first, it_end_utf8 last
         while (src != last)
         {
             src = iter_utf8(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfd(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfd)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63309,7 +63194,7 @@ uaix_static size_t impl_norm_to_unaccent_utf8(it_in_utf8 first, it_end_utf8 last
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
-uaix_static int impl_norm_is_nfc_utf8(it_in_utf8 first, it_end_utf8 last)
+uaix_static int norm_detect_utf8(it_in_utf8 first, it_end_utf8 last, type_codept norm_bit, type_codept norm_bound)
 {
     it_in_utf8 src = first;
 
@@ -63321,8 +63206,16 @@ uaix_static int impl_norm_is_nfc_utf8(it_in_utf8 first, it_end_utf8 last)
         src = iter_utf8(src, last, &c, iter_error);
         if (c == iter_error)
             return impl_norm_is_ill_formed;
-        if (!stages_qc_yes_is_nfc(c, &last_ccc))
-            return norm_is_no_or_maybe;
+        if (c < norm_bound)
+            last_ccc = 0;
+        else
+        {
+            const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
+            if (!stages_ccc_qc_detect(ccc_qc, norm_bit))
+                return norm_is_no_or_maybe;
+            if (!stages_ccc_qc_order(ccc_qc, &last_ccc))
+                return impl_norm_is_not_canonical_order;
+        }
     }
     return impl_norm_is_yes;
 }
@@ -63330,22 +63223,56 @@ uaix_static int impl_norm_is_nfc_utf8(it_in_utf8 first, it_end_utf8 last)
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
-uaix_static int impl_norm_is_nfd_utf8(it_in_utf8 first, it_end_utf8 last)
+uaix_static int norm_detect_css_utf8(it_in_utf8 first, it_end_utf8 last, type_codept norm_bit, type_codept norm_bound)
 {
     it_in_utf8 src = first;
 
     type_codept c = 0; // tag_can_be_uninitialized
     unsigned char last_ccc = 0; // tag_must_be_initialized
+    size_t count_ns = 0; // tag_must_be_initialized
 
     while (src != last)
     {
         src = iter_utf8(src, last, &c, iter_error);
         if (c == iter_error)
             return impl_norm_is_ill_formed;
-        if (!stages_qc_yes_is_nfd(c, &last_ccc))
-            return norm_is_no_or_maybe;
+        if (c < norm_bound)
+        {
+            last_ccc = 0;
+            count_ns = 0;
+        }
+        else
+        {
+            const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
+            if (!stages_ccc_qc_detect(ccc_qc, norm_bit))
+                return norm_is_no_or_maybe;
+            if (!stages_ccc_qc_order(ccc_qc, &last_ccc))
+                return impl_norm_is_not_canonical_order;
+            if (!stages_ccc_qc_ns(ccc_qc, &count_ns))
+                return impl_norm_is_not_stream_safe;
+        }
     }
     return impl_norm_is_yes;
+}
+
+#ifdef __cplusplus
+template<typename it_in_utf8, typename it_end_utf8>
+#endif
+uaix_static int impl_norm_is_nfc_utf8(it_in_utf8 first, it_end_utf8 last, bool check_stream_safe)
+{
+    if (!check_stream_safe)
+        return norm_detect_utf8(first, last, norm_bit_nfc, norm_bound_nfc);
+    return norm_detect_css_utf8(first, last, norm_bit_nfc, norm_bound_nfc);
+}
+
+#ifdef __cplusplus
+template<typename it_in_utf8, typename it_end_utf8>
+#endif
+uaix_static int impl_norm_is_nfd_utf8(it_in_utf8 first, it_end_utf8 last, bool check_stream_safe)
+{
+    if (!check_stream_safe)
+        return norm_detect_utf8(first, last, norm_bit_nfd, norm_bound_nfd);
+    return norm_detect_css_utf8(first, last, norm_bit_nfd, norm_bound_nfd);
 }
 
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
@@ -63353,43 +63280,21 @@ uaix_static int impl_norm_is_nfd_utf8(it_in_utf8 first, it_end_utf8 last)
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
-uaix_static int impl_norm_is_nfkc_utf8(it_in_utf8 first, it_end_utf8 last)
+uaix_static int impl_norm_is_nfkc_utf8(it_in_utf8 first, it_end_utf8 last, bool check_stream_safe)
 {
-    it_in_utf8 src = first;
-
-    type_codept c = 0; // tag_can_be_uninitialized
-    unsigned char last_ccc = 0; // tag_must_be_initialized
-
-    while (src != last)
-    {
-        src = iter_utf8(src, last, &c, iter_error);
-        if (c == iter_error)
-            return impl_norm_is_ill_formed;
-        if (!stages_qc_yes_is_nfkc(c, &last_ccc))
-            return norm_is_no_or_maybe;
-    }
-    return impl_norm_is_yes;
+    if (!check_stream_safe)
+        return norm_detect_utf8(first, last, norm_bit_nfkc, norm_bound_nfkc);
+    return norm_detect_css_utf8(first, last, norm_bit_nfkc, norm_bound_nfkc);
 }
 
 #ifdef __cplusplus
 template<typename it_in_utf8, typename it_end_utf8>
 #endif
-uaix_static int impl_norm_is_nfkd_utf8(it_in_utf8 first, it_end_utf8 last)
+uaix_static int impl_norm_is_nfkd_utf8(it_in_utf8 first, it_end_utf8 last, bool check_stream_safe)
 {
-    it_in_utf8 src = first;
-
-    type_codept c = 0; // tag_can_be_uninitialized
-    unsigned char last_ccc = 0; // tag_must_be_initialized
-
-    while (src != last)
-    {
-        src = iter_utf8(src, last, &c, iter_error);
-        if (c == iter_error)
-            return impl_norm_is_ill_formed;
-        if (!stages_qc_yes_is_nfkd(c, &last_ccc))
-            return norm_is_no_or_maybe;
-    }
-    return impl_norm_is_yes;
+    if (!check_stream_safe)
+        return norm_detect_utf8(first, last, norm_bit_nfkd, norm_bound_nfkd);
+    return norm_detect_css_utf8(first, last, norm_bit_nfkd, norm_bound_nfkd);
 }
 
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
@@ -63415,7 +63320,7 @@ uaix_static size_t impl_norm_to_nfc_utf16(it_in_utf16 first, it_end_utf16 last, 
         while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfc(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfc)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63471,7 +63376,7 @@ uaix_static size_t impl_norm_to_nfd_utf16(it_in_utf16 first, it_end_utf16 last, 
         while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfd(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfd)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63525,7 +63430,7 @@ uaix_static size_t impl_norm_to_nfkc_utf16(it_in_utf16 first, it_end_utf16 last,
         while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfkc(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfkc)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63581,7 +63486,7 @@ uaix_static size_t impl_norm_to_nfkd_utf16(it_in_utf16 first, it_end_utf16 last,
         while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfkd(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfkd)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63637,7 +63542,7 @@ uaix_static size_t impl_norm_to_unaccent_utf16(it_in_utf16 first, it_end_utf16 l
         while (src != last)
         {
             src = iter_utf16(src, last, &c, iter_replacement);
-            if (uaix_likely(stages_qc_yes_ns_nfd(c, &m.count_ns)))
+            if (uaix_likely(stages_qc_yes_ns(c, &m.count_ns, norm_bit_nfd)))
             {
                 if (uaix_likely(m.size == 1))
                 {
@@ -63680,7 +63585,7 @@ uaix_static size_t impl_norm_to_unaccent_utf16(it_in_utf16 first, it_end_utf16 l
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
-uaix_static int impl_norm_is_nfc_utf16(it_in_utf16 first, it_end_utf16 last)
+uaix_static int norm_detect_utf16(it_in_utf16 first, it_end_utf16 last, type_codept norm_bit, type_codept norm_bound)
 {
     it_in_utf16 src = first;
 
@@ -63692,8 +63597,16 @@ uaix_static int impl_norm_is_nfc_utf16(it_in_utf16 first, it_end_utf16 last)
         src = iter_utf16(src, last, &c, iter_error);
         if (c == iter_error)
             return impl_norm_is_ill_formed;
-        if (!stages_qc_yes_is_nfc(c, &last_ccc))
-            return norm_is_no_or_maybe;
+        if (c < norm_bound)
+            last_ccc = 0;
+        else
+        {
+            const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
+            if (!stages_ccc_qc_detect(ccc_qc, norm_bit))
+                return norm_is_no_or_maybe;
+            if (!stages_ccc_qc_order(ccc_qc, &last_ccc))
+                return impl_norm_is_not_canonical_order;
+        }
     }
     return impl_norm_is_yes;
 }
@@ -63701,22 +63614,56 @@ uaix_static int impl_norm_is_nfc_utf16(it_in_utf16 first, it_end_utf16 last)
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
-uaix_static int impl_norm_is_nfd_utf16(it_in_utf16 first, it_end_utf16 last)
+uaix_static int norm_detect_css_utf16(it_in_utf16 first, it_end_utf16 last, type_codept norm_bit, type_codept norm_bound)
 {
     it_in_utf16 src = first;
 
     type_codept c = 0; // tag_can_be_uninitialized
     unsigned char last_ccc = 0; // tag_must_be_initialized
+    size_t count_ns = 0; // tag_must_be_initialized
 
     while (src != last)
     {
         src = iter_utf16(src, last, &c, iter_error);
         if (c == iter_error)
             return impl_norm_is_ill_formed;
-        if (!stages_qc_yes_is_nfd(c, &last_ccc))
-            return norm_is_no_or_maybe;
+        if (c < norm_bound)
+        {
+            last_ccc = 0;
+            count_ns = 0;
+        }
+        else
+        {
+            const type_codept ccc_qc = stages(c, stage1_ccc_qc, stage2_ccc_qc);
+            if (!stages_ccc_qc_detect(ccc_qc, norm_bit))
+                return norm_is_no_or_maybe;
+            if (!stages_ccc_qc_order(ccc_qc, &last_ccc))
+                return impl_norm_is_not_canonical_order;
+            if (!stages_ccc_qc_ns(ccc_qc, &count_ns))
+                return impl_norm_is_not_stream_safe;
+        }
     }
     return impl_norm_is_yes;
+}
+
+#ifdef __cplusplus
+template<typename it_in_utf16, typename it_end_utf16>
+#endif
+uaix_static int impl_norm_is_nfc_utf16(it_in_utf16 first, it_end_utf16 last, bool check_stream_safe)
+{
+    if (!check_stream_safe)
+        return norm_detect_utf16(first, last, norm_bit_nfc, norm_bound_nfc);
+    return norm_detect_css_utf16(first, last, norm_bit_nfc, norm_bound_nfc);
+}
+
+#ifdef __cplusplus
+template<typename it_in_utf16, typename it_end_utf16>
+#endif
+uaix_static int impl_norm_is_nfd_utf16(it_in_utf16 first, it_end_utf16 last, bool check_stream_safe)
+{
+    if (!check_stream_safe)
+        return norm_detect_utf16(first, last, norm_bit_nfd, norm_bound_nfd);
+    return norm_detect_css_utf16(first, last, norm_bit_nfd, norm_bound_nfd);
 }
 
 #ifndef UNI_ALGO_DISABLE_NFKC_NFKD
@@ -63724,43 +63671,21 @@ uaix_static int impl_norm_is_nfd_utf16(it_in_utf16 first, it_end_utf16 last)
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
-uaix_static int impl_norm_is_nfkc_utf16(it_in_utf16 first, it_end_utf16 last)
+uaix_static int impl_norm_is_nfkc_utf16(it_in_utf16 first, it_end_utf16 last, bool check_stream_safe)
 {
-    it_in_utf16 src = first;
-
-    type_codept c = 0; // tag_can_be_uninitialized
-    unsigned char last_ccc = 0;
-
-    while (src != last)
-    {
-        src = iter_utf16(src, last, &c, iter_error);
-        if (c == iter_error)
-            return impl_norm_is_ill_formed;
-        if (!stages_qc_yes_is_nfkc(c, &last_ccc))
-            return norm_is_no_or_maybe;
-    }
-    return impl_norm_is_yes;
+    if (!check_stream_safe)
+        return norm_detect_utf16(first, last, norm_bit_nfkc, norm_bound_nfkc);
+    return norm_detect_css_utf16(first, last, norm_bit_nfkc, norm_bound_nfkc);
 }
 
 #ifdef __cplusplus
 template<typename it_in_utf16, typename it_end_utf16>
 #endif
-uaix_static int impl_norm_is_nfkd_utf16(it_in_utf16 first, it_end_utf16 last)
+uaix_static int impl_norm_is_nfkd_utf16(it_in_utf16 first, it_end_utf16 last, bool check_stream_safe)
 {
-    it_in_utf16 src = first;
-
-    type_codept c = 0; // tag_can_be_uninitialized
-    unsigned char last_ccc = 0; // tag_must_be_initialized
-
-    while (src != last)
-    {
-        src = iter_utf16(src, last, &c, iter_error);
-        if (c == iter_error)
-            return impl_norm_is_ill_formed;
-        if (!stages_qc_yes_is_nfkd(c, &last_ccc))
-            return norm_is_no_or_maybe;
-    }
-    return impl_norm_is_yes;
+    if (!check_stream_safe)
+        return norm_detect_utf16(first, last, norm_bit_nfkd, norm_bound_nfkd);
+    return norm_detect_css_utf16(first, last, norm_bit_nfkd, norm_bound_nfkd);
 }
 
 #endif // UNI_ALGO_DISABLE_NFKC_NFKD
@@ -63839,7 +63764,7 @@ uaix_static bool inline_norm_iter_nfc(struct impl_norm_iter_state* const s, type
     // I hate myself so much sometimes.
 
     c = norm_safe_cp(c);
-    if (stages_qc_yes_ns_nfc(c, &s->m.count_ns))
+    if (stages_qc_yes_ns(c, &s->m.count_ns, norm_bit_nfc))
     {
         if (s->m.size == 1)
             return norm_state_fast_1(s, c);
@@ -63856,7 +63781,7 @@ uaix_always_inline
 uaix_static bool inline_norm_iter_nfd(struct impl_norm_iter_state* const s, type_codept c)
 {
     c = norm_safe_cp(c);
-    if (stages_qc_yes_ns_nfd(c, &s->m.count_ns))
+    if (stages_qc_yes_ns(c, &s->m.count_ns, norm_bit_nfd))
     {
         if (s->m.size == 1)
             return norm_state_fast_1(s, c);
@@ -63875,7 +63800,7 @@ uaix_always_inline
 uaix_static bool inline_norm_iter_nfkc(struct impl_norm_iter_state* const s, type_codept c)
 {
     c = norm_safe_cp(c);
-    if (stages_qc_yes_ns_nfkc(c, &s->m.count_ns))
+    if (stages_qc_yes_ns(c, &s->m.count_ns, norm_bit_nfkc))
     {
         if (s->m.size == 1)
             return norm_state_fast_1(s, c);
@@ -63892,7 +63817,7 @@ uaix_always_inline
 uaix_static bool inline_norm_iter_nfkd(struct impl_norm_iter_state* const s, type_codept c)
 {
     c = norm_safe_cp(c);
-    if (stages_qc_yes_ns_nfkd(c, &s->m.count_ns))
+    if (stages_qc_yes_ns(c, &s->m.count_ns, norm_bit_nfkd))
     {
         if (s->m.size == 1)
             return norm_state_fast_1(s, c);
@@ -64440,21 +64365,21 @@ public:
 #  endif
 #endif
 
-#include <type_traits>
 #include <iterator>
 #include <utility> // std::forward
 #include <memory> // std::addressof
 #include <cassert>
-#if defined(__cpp_lib_ranges) && !defined(UNI_ALGO_FORCE_CPP17_RANGES)
-#include <ranges>
-#else
-#include <string_view>
-#endif
 #ifdef UNI_ALGO_LOG_CPP_ITER
 #include <iostream>
 #endif
 
 //!#include "../config.h"
+
+#if defined(__cpp_lib_ranges) && !defined(UNI_ALGO_FORCE_CPP17_RANGES)
+#include <ranges>
+#else
+#include <string_view>
+#endif
 
 namespace una {
 
@@ -67413,20 +67338,20 @@ uaiw_constexpr Dst t_norm2(const Alloc& alloc, const Src& src)
 // Normalization detection
 
 #if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
-template<typename Src, int(*FnDetect)(typename Src::const_iterator, typename Src::const_iterator)>
+template<typename Src, int(*FnDetect)(typename Src::const_iterator, typename Src::const_iterator, bool)>
 #elif defined(UNI_ALGO_FORCE_C_POINTERS)
-template<typename Src, int(*FnDetect)(typename Src::const_pointer, typename Src::const_pointer)>
+template<typename Src, int(*FnDetect)(typename Src::const_pointer, typename Src::const_pointer, bool)>
 #else // Safe layer
-template<typename Src, int(*FnDetect)(safe::in<typename Src::const_pointer>, safe::end<typename Src::const_pointer>)>
+template<typename Src, int(*FnDetect)(safe::in<typename Src::const_pointer>, safe::end<typename Src::const_pointer>, bool)>
 #endif
 uaiw_constexpr bool t_detect(const Src& src)
 {
 #if defined(UNI_ALGO_FORCE_CPP_ITERATORS)
-    return FnDetect(src.cbegin(), src.cend()) == detail::impl_norm_is_yes;
+    return FnDetect(src.cbegin(), src.cend(), true) == detail::impl_norm_is_yes;
 #elif defined(UNI_ALGO_FORCE_C_POINTERS)
-    return FnDetect(src.data(), src.data() + src.size()) == detail::impl_norm_is_yes;
+    return FnDetect(src.data(), src.data() + src.size(), true) == detail::impl_norm_is_yes;
 #else // Safe layer
-    return FnDetect(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}) == detail::impl_norm_is_yes;
+    return FnDetect(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, true) == detail::impl_norm_is_yes;
 #endif
 }
 
