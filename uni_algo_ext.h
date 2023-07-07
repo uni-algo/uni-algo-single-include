@@ -71356,6 +71356,989 @@ namespace views = ranges::views;
 } // namespace una
 
 
+// AMALGAMATION: uni_algo/ext/ascii.h
+
+
+#include <array>
+#include <string>
+#include <string_view>
+
+//!#include "../config.h"
+//!#include "../internal/found.h"
+
+namespace una::detail::ascii {
+
+template<typename T>
+inline constexpr std::array<T, 6> data_trim = {{' ','\t','\r','\n','\f','\v'}};
+template<typename T>
+inline constexpr std::basic_string_view<T> data_trim_view{data_trim<T>.data(), data_trim<T>.size()};
+
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
+
+// Generator in test/test_ascii.h
+
+inline constexpr const std::array<unsigned char, 128> data_collate_case = {{
+  1,   2,   3,   4,   5,   6,   7,   8,   9,  29,  30,  31,  32,  33,  10,  11,
+ 12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,
+ 34,  35,  36,  37,  66,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,
+ 67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  49,  50,  51,  52,  53,  54,
+ 55,  78,  80,  82,  84,  86,  88,  90,  92,  94,  96,  98, 100, 102, 104, 106,
+108, 110, 112, 114, 116, 118, 120, 122, 124, 126, 128,  56,  57,  58,  59,  60,
+ 61,  77,  79,  81,  83,  85,  87,  89,  91,  93,  95,  97,  99, 101, 103, 105,
+107, 109, 111, 113, 115, 117, 119, 121, 123, 125, 127,  62,  63,  64,  65,  28}};
+
+inline constexpr const std::array<unsigned char, 128> data_collate_nocase = {{
+  1,   2,   3,   4,   5,   6,   7,   8,   9,  29,  30,  31,  32,  33,  10,  11,
+ 12,  13,  14,  15,  16,  17,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,
+ 34,  35,  36,  37,  66,  38,  39,  40,  41,  42,  43,  44,  45,  46,  47,  48,
+ 67,  68,  69,  70,  71,  72,  73,  74,  75,  76,  49,  50,  51,  52,  53,  54,
+ 55,  77,  79,  81,  83,  85,  87,  89,  91,  93,  95,  97,  99, 101, 103, 105,
+107, 109, 111, 113, 115, 117, 119, 121, 123, 125, 127,  56,  57,  58,  59,  60,
+ 61,  77,  79,  81,  83,  85,  87,  89,  91,  93,  95,  97,  99, 101, 103, 105,
+107, 109, 111, 113, 115, 117, 119, 121, 123, 125, 127,  62,  63,  64,  65,  28}};
+
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
+
+} // namespace una::detail::ascii
+
+// REMINDER: to move everything to namespace una
+// rename namespace unx to uni and remove all "using namespace una;" below.
+
+namespace unx {
+
+namespace codepoint {
+
+inline constexpr bool is_ascii(char32_t c)
+{
+    return (c <= 0x7F) ? true : false;
+}
+
+inline constexpr bool is_ascii_uppercase(char32_t c)
+{
+    return (c >= U'A' && c <= U'Z') ? true : false;
+}
+
+inline constexpr bool is_ascii_lowercase(char32_t c)
+{
+    return (c >= U'a' && c <= U'z') ? true : false;
+}
+
+inline constexpr char32_t to_ascii_uppercase(char32_t c)
+{
+    return is_ascii_lowercase(c) ? c ^ 32 : c;
+}
+
+inline constexpr char32_t to_ascii_lowercase(char32_t c)
+{
+    return is_ascii_uppercase(c) ? c ^ 32 : c;
+}
+
+} // namespace codepoint
+
+namespace cases {
+
+template<typename T, typename Alloc = std::allocator<T>>
+uaiw_constexpr std::basic_string<T, std::char_traits<T>, Alloc>
+to_lowercase_ascii(std::basic_string_view<T> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<T>);
+
+    std::basic_string<T, std::char_traits<T>, Alloc> dst{source, alloc};
+
+    for (T& c : dst)
+    {
+        if (c >= 'A' && c <= 'Z')
+            c ^= 32;
+    }
+
+    return dst;
+}
+
+template<typename T, typename Alloc = std::allocator<T>>
+uaiw_constexpr std::basic_string<T, std::char_traits<T>, Alloc>
+to_uppercase_ascii(std::basic_string_view<T> source, const Alloc& alloc = Alloc())
+{
+    static_assert(std::is_integral_v<T>);
+
+    std::basic_string<T, std::char_traits<T>, Alloc> dst{source, alloc};
+
+    for (T& c : dst)
+    {
+        if (c >= 'a' && c <= 'z')
+            c ^= 32;
+    }
+
+    return dst;
+}
+
+inline uaiw_constexpr std::string to_lowercase_ascii(std::string_view source)
+{
+    return to_lowercase_ascii<char>(source);
+}
+inline uaiw_constexpr std::string to_uppercase_ascii(std::string_view source)
+{
+    return to_uppercase_ascii<char>(source);
+}
+
+} // namespace cases
+
+namespace casesens {
+
+template<typename T>
+uaiw_constexpr int compare_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
+{
+    static_assert(std::is_integral_v<T>);
+
+    // The same as binary comparison
+
+    return string1.compare(string2);
+}
+
+template<typename T>
+uaiw_constexpr una::found find_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
+{
+    static_assert(std::is_integral_v<T>);
+
+    // The same as binary find
+
+    const std::size_t pos = string1.find(string2);
+
+    if (pos == std::string_view::npos)
+        return una::found{};
+
+    return una::found{pos, pos + string2.size()};
+}
+
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
+
+template<typename T>
+uaiw_constexpr int collate_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
+{
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    static_assert(std::is_integral_v<T>);
+
+    // TODO: Maybe move to low-level
+    // See those & 0xFF it can cause false positive warnings that need to be silenced
+    // try to use the function with std::basic_string<long long> for example
+    // it least on the low-level we can simple silence this with casts
+
+    if (string1.size() > string2.size())
+        return 1;
+    if (string1.size() < string2.size())
+        return -1;
+
+    for (std::size_t i = 0, size = string1.size(); i < size; ++i)
+    {
+        char32_t c1 = string1[i] & 0xFF;
+        char32_t c2 = string2[i] & 0xFF;
+
+        if (c1 <= 0x7F)
+            c1 = detail::ascii::data_collate_case[c1];
+
+        if (c2 <= 0x7F)
+            c2 = detail::ascii::data_collate_case[c2];
+
+        if (c1 != c2)
+            return (c1 < c2) ? -1 : 1;
+    }
+
+    return 0;
+}
+
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
+
+inline uaiw_constexpr int compare_ascii(std::string_view string1, std::string_view string2)
+{
+    return compare_ascii<char>(string1, string2);
+}
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
+inline uaiw_constexpr int collate_ascii(std::string_view string1, std::string_view string2)
+{
+    return collate_ascii<char>(string1, string2);
+}
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
+inline uaiw_constexpr una::found find_ascii(std::string_view string1, std::string_view string2)
+{
+    return find_ascii<char>(string1, string2);
+}
+
+} // namespace casesens
+
+namespace caseless {
+
+template<typename T>
+uaiw_constexpr int compare_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
+{
+    static_assert(std::is_integral_v<T>);
+
+    // TODO: Maybe move to low-level
+
+    if (string1.size() < string2.size())
+        return -1;
+    if (string1.size() > string2.size())
+        return 1;
+
+    for (std::size_t i = 0, size = string1.size(); i < size; ++i)
+    {
+        T c1 = string1[i];
+        T c2 = string2[i];
+
+        if (c1 >= 'A' && c1 <= 'Z')
+            c1 ^= 32;
+
+        if (c2 >= 'A' && c2 <= 'Z')
+            c2 ^= 32;
+
+        if (c1 != c2)
+            return (c1 < c2) ? -1 : 1;
+    }
+
+    return 0;
+}
+
+template<typename T>
+uaiw_constexpr una::found find_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
+{
+    static_assert(std::is_integral_v<T>);
+
+    // TODO: Maybe move to low-level
+    // See comment in casesens::collate_ascii above
+
+    const std::size_t m = string2.size();
+    const std::size_t n = string1.size();
+
+    if (m > n)
+        return una::found{};
+
+    for (std::size_t i = 0; i <= n - m; ++i)
+    {
+        std::size_t j = 0;
+
+        for (j = 0; j < m; ++j)
+        {
+            T c1 = string1[i + j];
+            T c2 = string2[j];
+
+            if (c1 >= 'A' && c1 <= 'Z')
+                c1 ^= 32;
+
+            if (c2 >= 'A' && c2 <= 'Z')
+                c2 ^= 32;
+
+            if (c1 != c2)
+                break;
+        }
+
+        if (j == m)
+            return una::found{i, i + m};
+    }
+
+    return una::found{};
+}
+
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
+
+template<typename T>
+uaiw_constexpr int collate_ascii(std::basic_string_view<T> string1, std::basic_string_view<T> string2)
+{
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    static_assert(std::is_integral_v<T>);
+
+    // TODO: Maybe move to low-level
+
+    if (string1.size() < string2.size())
+        return -1;
+    if (string1.size() > string2.size())
+        return 1;
+
+    for (std::size_t i = 0, size = string1.size(); i < size; ++i)
+    {
+        char32_t c1 = string1[i] & 0xFF;
+        char32_t c2 = string2[i] & 0xFF;
+
+        if (c1 <= 0x7F)
+            c1 = detail::ascii::data_collate_nocase[c1];
+
+        if (c2 <= 0x7F)
+            c2 = detail::ascii::data_collate_nocase[c2];
+
+        if (c1 != c2)
+            return (c1 < c2) ? -1 : 1;
+    }
+
+    return 0;
+}
+
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
+
+inline uaiw_constexpr int compare_ascii(std::string_view string1, std::string_view string2)
+{
+    return compare_ascii<char>(string1, string2);
+}
+#ifndef UNI_ALGO_IMPL_DISABLE_COLLATE
+inline uaiw_constexpr int collate_ascii(std::string_view string1, std::string_view string2)
+{
+    return collate_ascii<char>(string1, string2);
+}
+#endif // UNI_ALGO_IMPL_DISABLE_COLLATE
+inline uaiw_constexpr una::found find_ascii(std::string_view string1, std::string_view string2)
+{
+    return find_ascii<char>(string1, string2);
+}
+
+} // namespace caseless
+
+template<typename T>
+uaiw_constexpr bool is_valid_ascii(std::basic_string_view<T> view)
+{
+    static_assert(std::is_integral_v<T>);
+
+    for (T c : view)
+    {
+        if (static_cast<char32_t>(c) > 0x7F)
+            return false;
+    }
+
+    return true;
+}
+
+inline uaiw_constexpr bool is_valid_ascii(std::string_view view)
+{
+    return is_valid_ascii<char>(view);
+}
+
+template<typename T>
+uaiw_constexpr std::basic_string_view<T> trim_ascii(std::basic_string_view<T> view)
+{
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    static_assert(std::is_integral_v<T>);
+
+    const std::size_t pos = view.find_first_not_of(detail::ascii::data_trim_view<T>);
+    const std::size_t end = view.find_last_not_of(detail::ascii::data_trim_view<T>);
+
+    view.remove_prefix(pos == std::string_view::npos ? 0 : pos);
+    view.remove_suffix(end == std::string_view::npos ? 0 : view.size() + pos - end - 1);
+
+    return view;
+}
+
+template<typename T>
+uaiw_constexpr std::basic_string_view<T> trim_start_ascii(std::basic_string_view<T> view)
+{
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    static_assert(std::is_integral_v<T>);
+
+    const std::size_t pos = view.find_first_not_of(detail::ascii::data_trim_view<T>);
+
+    view.remove_prefix(pos == std::string_view::npos ? 0 : pos);
+
+    return view;
+}
+
+template<typename T>
+uaiw_constexpr std::basic_string_view<T> trim_end_ascii(std::basic_string_view<T> view)
+{
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    static_assert(std::is_integral_v<T>);
+
+    const std::size_t end = view.find_last_not_of(detail::ascii::data_trim_view<T>);
+
+    view.remove_suffix(end == std::string_view::npos ? 0 : view.size() - end - 1);
+
+    return view;
+}
+
+inline uaiw_constexpr std::string_view trim_ascii(std::string_view view)
+{
+    return trim_ascii<char>(view);
+}
+inline uaiw_constexpr std::string_view trim_start_ascii(std::string_view view)
+{
+    return trim_start_ascii<char>(view);
+}
+inline uaiw_constexpr std::string_view trim_end_ascii(std::string_view view)
+{
+    return trim_end_ascii<char>(view);
+}
+
+} // namespace unx
+
+
+// AMALGAMATION: uni_algo/ext/translit/macedonian_to_latin_docs.h
+
+
+#include <array>
+#include <string>
+#include <string_view>
+
+//!#include "../../ranges_conv.h"
+//!#include "../../internal/ranges_translit.h"
+
+namespace una::detail::translit {
+
+// This translit class must be static and internal, use the same desigh for all transliterators.
+class macedonian_to_latin_docs
+{
+    // https://en.wikipedia.org/wiki/Romanization_of_Macedonian
+    // Official Documents/Cadastre rules.
+private:
+    static constexpr std::array<unsigned char, 96> simple_map = {{
+//   0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+    { },{ },{ },{ },{ },{ },{ },{ },'J',{ },{ },{ },{ },{ },{ },{ },   // 040x
+    'A','B','V','G','D','E',{ },'Z','I',{ },'K','L','M','N','O','P',   // 041x
+    'R','S','T','U','F','H','C',{ },{ },{ },{ },{ },{ },{ },{ },{ },   // 042x
+    'a','b','v','g','d','e',{ },'z','i',{ },'k','l','m','n','o','p',   // 043x
+    'r','s','t','u','f','h','c',{ },{ },{ },{ },{ },{ },{ },{ },{ },   // 044x
+    { },{ },{ },{ },{ },{ },{ },{ },'j',{ },{ },{ },{ },{ },{ },{ }}}; // 045x
+
+    // NOLINTBEGIN(modernize-use-bool-literals)
+    static constexpr std::array<bool, 96> lowercase_map = {{
+//  0 1 2 3 4 5 6 7 8 9 A B C D E F
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   // 040x
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   // 041x
+    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,   // 042x
+    1,1,1,1,1,1,1,1,1,0,1,1,1,1,1,1,   // 043x
+    1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,   // 044x
+    0,0,0,1,0,1,0,0,1,1,1,0,1,0,0,1}}; // 045x
+    // NOLINTEND(modernize-use-bool-literals)
+
+    static constexpr std::array<std::array<std::array<unsigned char, 2>, 2>, 96> complex_map = {{
+//            0/4/8/C                     1/5/9/D                     2/6/A/E                     3/7/B/F
+                { },                        { },                        { },            {{{{'G','J'}},{{'G','j'}}}}, // 040x
+                { },            {{{{'D','Z'}},{{'D','z'}}}},            { },                        { },
+                { },            {{{{'L','J'}},{{'L','j'}}}},{{{{'N','J'}},{{'N','j'}}}},            { },
+    {{{{'K','J'}},{{'K','j'}}}},            { },                        { },            {{{{'D','J'}},{{'D','j'}}}},
+                { },                        { },                        { },                        { },             // 041x
+                { },                        { },            {{{{'Z','H'}},{{'Z','h'}}}},            { },
+                { },                        { },                        { },                        { },
+                { },                        { },                        { },                        { },
+                { },                        { },                        { },                        { },             // 042x
+                { },                        { },                        { },            {{{{'C','H'}},{{'C','h'}}}},
+    {{{{'S','H'}},{{'S','h'}}}},            { },                        { },                        { },
+                { },                        { },                        { },                        { },
+                { },                        { },                        { },                        { },             // 043x
+                { },                        { },            {{{{'z','h'}},{{'z','h'}}}},            { },
+                { },                        { },                        { },                        { },
+                { },                        { },                        { },                        { },
+                { },                        { },                        { },                        { },             // 044x
+                { },                        { },                        { },            {{{{'c','h'}},{{'c','h'}}}},
+    {{{{'s','h'}},{{'s','h'}}}},            { },                        { },                        { },
+                { },                        { },                        { },                        { },
+                { },                        { },                        { },            {{{{'g','j'}},{{'g','j'}}}}, // 045x
+                { },            {{{{'d','z'}},{{'d','z'}}}},            { },                        { },
+                { },            {{{{'l','j'}},{{'l','j'}}}},{{{{'n','j'}},{{'n','j'}}}},            { },
+    {{{{'k','j'}},{{'k','j'}}}},            { },                        { },            {{{{'d','j'}},{{'d','j'}}}}}};
+
+    // Cyrilic Unicode Block
+    static constexpr bool is_block(char32_t c) { return (c >= 0x0400 && c <= 0x045F); }
+    static constexpr std::size_t to_block(char32_t c) { return (c - 0x0400); }
+
+public:
+    macedonian_to_latin_docs() = delete;
+
+    // Buffer size 2 is enought to translit Macedonian to Latin
+    // the smaller the buffer the faster the translit view works.
+    static constexpr std::size_t buf_size = 2;
+
+    // The function below is used by the translit view.
+    // Translit view is very powerfull it can do everything that
+    // una::ranges::filter_view and una::ranges::transform_view can do
+    // and much more but it can be dangerous for example it's possible
+    // to cause an endless loop when it used improperly so it's important
+    // what value must be returned in the function below.
+    // This is the reason why the view is not available for a user.
+    // Note the function have only one parameter - buffer, you can do whatever
+    // you want with the buffer just make sure you return the proper value.
+    static constexpr std::size_t buf_func(detail::translit::buffer& buf)
+    {
+        // Compose small/capital letters GJE/KJE first.
+        // In Macedonian there are only 4 cases when letters can be decomposed
+        // we can handle it like this so we don't need to use NFC view
+        // it will be faster, even though it won't work in some corner cases
+        // but it doesn't matter much for the transliteration.
+        if (buf.size() > 1)
+        {
+            if (buf[0] == 0x0433 && buf[1] == 0x301) // CYRILLIC SMALL LETTER GHE
+            {
+                buf.replace(0, 2, 1, 0x0453);        // CYRILLIC SMALL LETTER GJE
+                return 0;
+                // Read example below why we return 0 here
+            }
+            if (buf[0] == 0x0413 && buf[1] == 0x301) // CYRILLIC CAPITAL LETTER GHE
+            {
+                buf.replace(0, 2, 1, 0x0403);        // CYRILLIC CAPITAL LETTER GJE
+                return 0;
+            }
+            if (buf[0] == 0x043A && buf[1] == 0x301) // CYRILLIC SMALL LETTER KA
+            {
+                buf.replace(0, 2, 1, 0x045C);        // CYRILLIC SMALL LETTER KJE
+                return 0;
+            }
+            if (buf[0] == 0x041A && buf[1] == 0x301) // CYRILLIC CAPITAL LETTER KA
+            {
+                buf.replace(0, 2, 1, 0x040C);        // CYRILLIC CAPITAL LETTER KJE
+                return 0;
+            }
+        }
+
+        // This is an example if we need to remove a code point
+        // Note that we don't need buf.size() check here
+        // It is guaranteed that the size of the buffer is at least 1
+        //if (buf[0] == U' ') // Remove all spaces for example
+        //{
+        //	buffer.erase(0, 1);
+        //	return 0;
+        //	// Note that we return 0 here. If we remove a code point(s)
+        //	// returning 0 will cause the buffer to refill.
+        //	// Never return 0 if you don't remove or change a code point(s)
+        //	// because returning 0 also means to stay at the same position.
+        //}
+
+        // The code below works with Cyrilic Unicode block
+        // if it's not then proceed by one code point
+        std::size_t m = 0;
+        if (is_block(buf[0]))
+            m = to_block(buf[0]);
+        else
+            return 1;
+
+        if (simple_map[m])
+        {
+            buf[0] = simple_map[m];
+            return 1;
+            // We changed only 1 code point
+            // so just proceed by one code point.
+        }
+
+        if (complex_map[m][0][0])
+        {
+            // If the next code point is lowercase Macedonian letter
+            if (buf.size() > 1 && is_block(buf[1]) && lowercase_map[to_block(buf[1])])
+                buf.replace(0, 1, complex_map[m][1], 0, 2);
+            else
+                buf.replace(0, 1, complex_map[m][0], 0, 2);
+
+            return 2;
+            // We changed multiple code points
+            // so we need to skip them to get the next code point.
+            // It is fine to skip less code points than you changed
+            // if you need it for some complicated rules but be aware
+            // if the rules interfere with each other it can cause an endless loop.
+        }
+
+        // Otherwise proceed by one code point
+        return 1;
+
+        // This is a simple example how rules can interfere with each other
+        // that leads to an endless loop.
+        // For example you need to replace all "x" to "xx" if you do it like this:
+        //if (buf[0] == U'x')
+        //{
+        //    buf.replace(0, 1, U"xx");
+        //    return 1;
+        //}
+        // It will lead to an endless loop because you skip only 1 "x"
+        // and then get the second "x" replace it again and again
+        // so you must return 2 here to skip both "x".
+    }
+};
+
+} // namespace una::detail::translit
+
+// Expose translit functions that use the translit view with the translit class above.
+
+namespace unx::translit {
+
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+macedonian_to_latin_docs_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    // Note that we use views from una::ranges instead of adaptors from una::views
+    // because translit view is internal and doesn't have view adaptor
+    // and we want to maximize the compilation speed.
+
+    using tr = detail::translit::macedonian_to_latin_docs;
+
+    auto result = detail::rng::translit_view{ranges::utf8_view{source}, tr::buf_func, tr::buf_size}
+        | ranges::to_utf8_reserve<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>>(source.size(), alloc);
+
+#ifndef UNI_ALGO_NO_SHRINK_TO_FIT
+    result.shrink_to_fit();
+#endif
+    return result;
+}
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+macedonian_to_latin_docs_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    using tr = detail::translit::macedonian_to_latin_docs;
+
+    auto result = detail::rng::translit_view{ranges::utf16_view{source}, tr::buf_func, tr::buf_size}
+        | ranges::to_utf16_reserve<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>>(source.size(), alloc);
+
+#ifndef UNI_ALGO_NO_SHRINK_TO_FIT
+    result.shrink_to_fit();
+#endif
+    return result;
+}
+inline uaiw_constexpr std::string macedonian_to_latin_docs_utf8(std::string_view source)
+{
+    return macedonian_to_latin_docs_utf8<char>(source);
+}
+inline uaiw_constexpr std::u16string macedonian_to_latin_docs_utf16(std::u16string_view source)
+{
+    return macedonian_to_latin_docs_utf16<char16_t>(source);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring macedonian_to_latin_docs_utf16(std::wstring_view source)
+{
+    return macedonian_to_latin_docs_utf16<wchar_t>(source);
+}
+#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+#ifdef __cpp_lib_char8_t
+inline uaiw_constexpr std::u8string macedonian_to_latin_docs_utf8(std::u8string_view source)
+{
+    return macedonian_to_latin_docs_utf8<char8_t>(source);
+}
+#endif // __cpp_lib_char8_t
+
+} // namespace unx::translit
+
+
+// AMALGAMATION: uni_algo/ext/translit/japanese_kana_to_romaji_hepburn.h
+
+
+#include <array>
+#include <string>
+#include <string_view>
+
+//!#include "../../ranges_conv.h"
+//!#include "../../internal/ranges_translit.h"
+
+namespace una::detail::translit {
+
+class japanese_kana_to_romaji_hepburn
+{
+    // See macedonian_to_latin_docs.h for details about translit view
+
+    // https://en.wikipedia.org/wiki/Hepburn_romanization#Features
+    // https://en.wikipedia.org/wiki/Hepburn_romanization#Romanization_charts
+    // https://en.wikipedia.org/wiki/Romanization_of_Japanese#Differences_among_romanizations
+private:
+    static constexpr std::array<std::array<unsigned char, 3>, 96> simple_map = {{
+//      0/8             1/9             2/A             3/B             4/C             5/D             6/E             7/F
+        { },          {{'a'}},        {{'a'}},        {{'i'}},        {{'i'}},        {{'u'}},        {{'u'}},        {{'e'}},     // 304x
+      {{'e'}},        {{'o'}},        {{'o'}},      {{'k','a'}},    {{'g','a'}},    {{'k','i'}},    {{'g','i'}},    {{'k','u'}},
+    {{'g','u'}},    {{'k','e'}},    {{'g','e'}},    {{'k','o'}},    {{'g','o'}},    {{'s','a'}},    {{'z','a'}},  {{'s','h','i'}}, // 305x
+    {{'j','i'}},    {{'s','u'}},    {{'z','u'}},    {{'s','e'}},    {{'z','e'}},    {{'s','o'}},    {{'z','o'}},    {{'t','a'}},
+    {{'d','a'}},  {{'c','h','i'}},  {{'d','i'}},  {{'t','s','u'}},{{'t','s','u'}},  {{'d','u'}},    {{'t','e'}},    {{'d','e'}},   // 306x
+    {{'t','o'}},    {{'d','o'}},    {{'n','a'}},    {{'n','i'}},    {{'n','u'}},    {{'n','e'}},    {{'n','o'}},    {{'h','a'}},
+    {{'b','a'}},    {{'p','a'}},    {{'h','i'}},    {{'b','i'}},    {{'p','i'}},    {{'f','u'}},    {{'b','u'}},    {{'p','u'}},   // 307x
+    {{'h','e'}},    {{'b','e'}},    {{'p','e'}},    {{'h','o'}},    {{'b','o'}},    {{'p','o'}},    {{'m','a'}},    {{'m','i'}},
+    {{'m','u'}},    {{'m','e'}},    {{'m','o'}},    {{'y','a'}},    {{'y','a'}},    {{'y','u'}},    {{'y','u'}},    {{'y','o'}},   // 308x
+    {{'y','o'}},    {{'r','a'}},    {{'r','i'}},    {{'r','u'}},    {{'r','e'}},    {{'r','o'}},    {{'w','a'}},    {{'w','a'}},
+    {{'w','i'}},    {{'w','e'}},    {{'w','o'}},      {{'n'}},      {{'v','u'}},    {{'k','a'}},    {{'k','e'}},        { },       // 309x
+        { },            { },            { },            { },            { },            { },            { },            { }    }};
+
+    static constexpr std::array<std::array<unsigned char, 2>, 96> complex_map = {{
+//   0       1         2           3           4       5   6       7         8     9       A       B       C       D           E       F
+    { },    { },      { },        { },        { },    { },{ },    { },      { },  { },    { },    { },    { },{{'k','y'}},{{'g','y'}},{ },     // 304x
+    { },    { },      { },        { },        { },    { },{ },{{'s','h'}},{{'j'}},{ },    { },    { },    { },    { },        { },    { },     // 305x
+    { },{{'c','h'}},{{'j'}},      { },        { },    { },{ },    { },      { },  { },    { },{{'n','y'}},{ },    { },        { },    { },     // 306x
+    { },    { },  {{'h','y'}},{{'b','y'}},{{'p','y'}},{ },{ },    { },      { },  { },    { },    { },    { },    { },        { },{{'m','y'}}, // 307x
+    { },    { },      { },        { },        { },    { },{ },    { },      { },  { },{{'r','y'}},{ },    { },    { },        { },    { },     // 308x
+    { },    { },      { },        { },        { },    { },{ },{{'s','h'}},  { },  { },    { },    { },    { },    { },        { },    { }  }}; // 309x
+
+    static constexpr bool is_vowel(char32_t c)
+    {
+        return c == U'a' || c == U'i' || c == U'u' || c == U'e' || c == U'o' || c == U'y';
+    }
+
+    static constexpr std::size_t simple_fn(detail::translit::buffer& buf, char32_t c, std::size_t i)
+    {
+        std::size_t m = 0;
+        if (c >= 0x3040 && c <= 0x309F) // Hiragana
+        {
+            if (simple_map[c - 0x3040][0])
+                m = c - 0x3040;
+        }
+        else if (c >= 0x30A0 && c <= 0x30FF) // Katakana
+        {
+            if (simple_map[c - 0x30A0][0])
+                m = c - 0x30A0;
+        }
+        if (m == 0) return 0;
+
+        if (simple_map[m][2])
+        {
+            buf.replace(i, 1, simple_map[m], 0, 3);
+            return 3;
+        }
+        else if (simple_map[m][1])
+        {
+            buf.replace(i, 1, simple_map[m], 0, 2);
+            return 2;
+        }
+
+        buf[i] = simple_map[m][0];
+        return 1;
+    }
+
+    static constexpr std::size_t complex_fn(detail::translit::buffer& buf, std::u32string_view view, std::size_t i)
+    {
+        if (view.size() != 2)
+            return 0;
+
+        if (view[0] >= 0x3040 && view[0] <= 0x309F) // Hiragana
+        {
+            const std::size_t m = view[0] - 0x3040;
+            if (complex_map[m][0])
+            {
+                // HIRAGANA LETTER SMALL YA/YU/YO
+                const char32_t v = (view[1] == 0x3083) ? U'a' : (view[1] == 0x3085) ? U'u' : (view[1] == 0x3087) ? U'o' : 0;
+                if (v)
+                {
+                    if (complex_map[m][1])
+                    {
+                        buf.insert(i, 1, 0);
+                        buf[i + 0] = complex_map[m][0];
+                        buf[i + 1] = complex_map[m][1];
+                        buf[i + 2] = v;
+                        return 3;
+                    }
+
+                    buf[i + 0] = complex_map[m][0];
+                    buf[i + 1] = v;
+                    return 2;
+                }
+            }
+        }
+        else if (view[0] >= 0x30A0 && view[0] <= 0x30FF) // Katakana
+        {
+            const std::size_t m = view[0] - 0x30A0;
+            if (complex_map[m][0])
+            {
+                // KATAKANA LETTER SMALL YA/YU/YO
+                const char32_t v = (view[1] == 0x30E3) ? U'a' : (view[1] == 0x30E5) ? U'u' : (view[1] == 0x30E7) ? U'o' : 0;
+                if (v)
+                {
+                    if (complex_map[m][1])
+                    {
+                        buf.insert(i, 1, 0);
+                        buf[i + 0] = complex_map[m][0];
+                        buf[i + 1] = complex_map[m][1];
+                        buf[i + 2] = v;
+                        return 3;
+                    }
+
+                    buf[i + 0] = complex_map[m][0];
+                    buf[i + 1] = v;
+                    return 2;
+                }
+            }
+        }
+        return 0;
+    }
+
+public:
+    japanese_kana_to_romaji_hepburn() = delete;
+
+    // The buffer size 3 is enough for the algorithm
+    static constexpr std::size_t buf_size = 3;
+
+    // Note that this function has additional data parameter prev
+    // so a proxy function is required to use it with translit view
+    static constexpr std::size_t buf_func(detail::translit::buffer& buf, bool& prev)
+    {
+        const std::u32string_view view = buf;
+
+        // Syllabic n (prev is only needed for n) or Long consonants
+        if ((prev && buf[0] == U'n') || buf[0] == 0x3063 || buf[0] == 0x30C3) // HIRAGANA/KATAKANA LETTER SMALL TU
+        {
+            std::size_t size = 0;
+            // Always try complex map first
+            if (buf.size() > 2)
+                size = complex_fn(buf, view.substr(1, 2), 1);
+            if (!size && buf.size() > 1)
+                size = simple_fn(buf, buf[1], 1);
+            if (size)
+            {
+                prev = true;
+                if (buf[0] == U'n') // Syllabic n
+                {
+                    if (is_vowel(buf[1]))
+                    {
+                        buf.insert(1, 1, U'\''); // Replace n -> n'
+                        return size + 1;
+                    }
+                }
+                else if (size > 1 && buf[1] == U'c' && buf[2] == U'h') // Long consonant ch -> tch
+                    buf[0] = U't';
+                else if (!is_vowel(buf[1])) // Long consonants others
+                    buf[0] = buf[1];
+                return size;
+            }
+            if (buf[0] == 0x3063 || buf[0] == 0x30C3) // HIRAGANA/KATAKANA LETTER SMALL TU
+                return simple_fn(buf, buf[0], 0);
+        }
+        else if (!prev) // Simple mapping
+        {
+            if (buf.size() > 1)
+            {
+                const std::size_t size = complex_fn(buf, view.substr(0, 2), 0);
+                if (size)
+                {
+                    prev = true;
+                    return size - 1;
+                    // -1 to leave the last code point in the buffer for long vowels etc.
+                }
+            }
+            const std::size_t size = simple_fn(buf, buf[0], 0);
+            if (size)
+            {
+                prev = true;
+                return size - 1;
+            }
+        }
+        else // Main path
+        {
+            if (buf.size() > 2)
+            {
+                const std::size_t size = complex_fn(buf, view.substr(1, 2), 1);
+                if (size)
+                {
+                    prev = true;
+                    return size - 1;
+                }
+            }
+            // Long vowels
+            if (buf.size() > 1 && buf[1] != 0x3063 && buf[1] != 0x30C3) // HIRAGANA/KATAKANA LETTER SMALL TU
+            {
+                const std::size_t size = simple_fn(buf, buf[1], 1);
+                if (size)
+                {
+                    prev = false;
+                    if (size == 1)
+                    {
+                        // Note that the rule: two adjacent syllables
+                        // is impossible to check algorithmically
+                        // so just use modified Hepburn rules always
+                        if (buf[0] == U'a' && buf[1] == U'a')
+                            buf.replace(0, 2, 1, 0x0101); // LATIN SMALL LETTER A WITH MACRON
+                        else if (buf[0] == U'u' && buf[1] == U'u')
+                            buf.replace(0, 2, 1, 0x016B); // LATIN SMALL LETTER U WITH MACRON
+                        else if (buf[0] == U'e' && buf[1] == U'e')
+                            buf.replace(0, 2, 1, 0x0113); // LATIN SMALL LETTER E WITH MACRON
+                        else if (buf[0] == U'o' && buf[1] == U'o')
+                            buf.replace(0, 2, 1, 0x014D); // LATIN SMALL LETTER O WITH MACRON // NOLINT
+                        else if (buf[0] == U'o' && buf[1] == U'u')
+                            buf.replace(0, 2, 1, 0x014D); // LATIN SMALL LETTER O WITH MACRON // NOLINT
+                        else if (buf[1] == U'n') // Syllabic n special case
+                            prev = true;
+                    }
+                    else
+                        prev = true;
+                    return size;
+                }
+            }
+            // Loanwords
+            if (buf.size() > 1 && buf[1] == 0x30FC) // KATAKANA-HIRAGANA PROLONGED SOUND MARK
+            {
+                if (buf[0] == U'a')
+                    buf.replace(0, 2, 1, 0x0101); // LATIN SMALL LETTER A WITH MACRON
+                else if (buf[0] == U'i')
+                    buf.replace(0, 2, 1, 0x012B); // LATIN SMALL LETTER I WITH MACRON
+                else if (buf[0] == U'u')
+                    buf.replace(0, 2, 1, 0x016B); // LATIN SMALL LETTER U WITH MACRON
+                else if (buf[0] == U'e')
+                    buf.replace(0, 2, 1, 0x0113); // LATIN SMALL LETTER E WITH MACRON
+                else if (buf[0] == U'o')
+                    buf.replace(0, 2, 1, 0x014D); // LATIN SMALL LETTER O WITH MACRON
+                // Fallthrough to return 1
+            }
+        }
+
+        // Otherwise proceed by one code point
+        prev = false;
+        return 1;
+    }
+};
+
+} // namespace una::detail::translit
+
+namespace unx::translit {
+
+template<typename UTF8, typename Alloc = std::allocator<UTF8>>
+uaiw_constexpr std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>
+japanese_kana_to_romaji_hepburn_utf8(std::basic_string_view<UTF8> source, const Alloc& alloc = Alloc())
+{
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    using tr = detail::translit::japanese_kana_to_romaji_hepburn;
+
+    bool prev = false;
+    auto func = [&prev](detail::translit::buffer& buf) { return tr::buf_func(buf, prev); };
+
+    auto result = detail::rng::translit_view{ranges::utf8_view{source}, func, tr::buf_size}
+        | ranges::to_utf8_reserve<std::basic_string<UTF8, std::char_traits<UTF8>, Alloc>>(source.size(), alloc);
+
+#ifndef UNI_ALGO_NO_SHRINK_TO_FIT
+    result.shrink_to_fit();
+#endif
+    return result;
+}
+template<typename UTF16, typename Alloc = std::allocator<UTF16>>
+uaiw_constexpr std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>
+japanese_kana_to_romaji_hepburn_utf16(std::basic_string_view<UTF16> source, const Alloc& alloc = Alloc())
+{
+    using namespace una; // NOLINT(google-build-using-namespace)
+
+    using tr = detail::translit::japanese_kana_to_romaji_hepburn;
+
+    bool prev = false;
+    auto func = [&prev](detail::translit::buffer& buf) { return tr::buf_func(buf, prev); };
+
+    auto result = detail::rng::translit_view{ranges::utf16_view{source}, func, tr::buf_size}
+        | ranges::to_utf16_reserve<std::basic_string<UTF16, std::char_traits<UTF16>, Alloc>>(source.size(), alloc);
+
+#ifndef UNI_ALGO_NO_SHRINK_TO_FIT
+    result.shrink_to_fit();
+#endif
+    return result;
+}
+inline uaiw_constexpr std::string japanese_kana_to_romaji_hepburn_utf8(std::string_view source)
+{
+    return japanese_kana_to_romaji_hepburn_utf8<char>(source);
+}
+inline uaiw_constexpr std::u16string japanese_kana_to_romaji_hepburn_utf16(std::u16string_view source)
+{
+    return japanese_kana_to_romaji_hepburn_utf16<char16_t>(source);
+}
+#if WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF // 16-bit wchar_t
+inline uaiw_constexpr std::wstring japanese_kana_to_romaji_hepburn_utf16(std::wstring_view source)
+{
+    return japanese_kana_to_romaji_hepburn_utf16<wchar_t>(source);
+}
+#endif // WCHAR_MAX >= 0x7FFF && WCHAR_MAX <= 0xFFFF
+#ifdef __cpp_lib_char8_t
+inline uaiw_constexpr std::u8string utf8_japanese_kana_to_romaji_hepburn(std::u8string_view source)
+{
+    return japanese_kana_to_romaji_hepburn_utf8<char8_t>(source);
+}
+#endif // __cpp_lib_char8_t
+
+} // namespace unx::translit
+
+
 #endif // UNI_ALGO_H_AMALGAMATION
 
 /* Public Domain License
