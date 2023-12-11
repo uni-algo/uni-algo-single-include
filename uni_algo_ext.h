@@ -18,7 +18,7 @@
 // (VERSION / 1000000) is the major version 0..255.
 
 // NOLINTNEXTLINE(cppcoreguidelines-macro-usage, modernize-macro-to-enum)
-#define UNI_ALGO_CPP_LIB_VERSION 1001000
+#define UNI_ALGO_CPP_LIB_VERSION 1002000
 
 // AMALGAMATION: uni_algo/impl/impl_unicode_version.h
 
@@ -64935,6 +64935,51 @@ constexpr StringViewResult to_string_view(const Range&, Iter it_begin, Iter it_p
 }
 #endif
 
+// Non-propagating cache from C++23 Standard (26.7.4)
+// TODO: std::optional here instead of value/bool would be better, but as I remember std::optional
+// is not constexpr in old compilers where we need it to be. But our constexpr library already
+// requires pretty fresh compilers so it can be fine, need to recheck it and use it if possible.
+template<class T>
+class cache {
+private:
+    T val;
+    bool has_val = false;
+
+public:
+    cache() = default;
+    ~cache() = default;
+    constexpr cache(const cache&) noexcept {}
+    constexpr cache(cache&& other) noexcept { other.has_val = false; }
+
+    constexpr cache& operator=(const cache& other) noexcept
+    {
+        if (std::addressof(other) != this)
+            val.has_val = false;
+        return *this;
+    }
+
+    constexpr cache& operator=(cache&& other) noexcept
+    {
+        has_val = false;
+        other.has_val = false;
+        return *this;
+    }
+
+    constexpr bool has_value() const noexcept { return has_val; }
+
+    // No need this, use get_value instead
+    //constexpr T& operator*() noexcept { return val; }
+    //constexpr const T& operator*() const noexcept { return val; }
+
+    constexpr T& get_value() noexcept { return val; }
+    constexpr const T& get_value() const noexcept { return val; }
+    constexpr void set_value(const T& value) noexcept
+    {
+        val = value;
+        has_val = true;
+    }
+};
+
 } // namespace detail::rng
 
 namespace ranges {
@@ -65393,8 +65438,7 @@ private:
     Range range = Range{};
     Func func_translit;
     std::size_t buf_size = 1;
-    translit<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<translit<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr translit_view() = default;
@@ -65404,13 +65448,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = translit<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(translit<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -65485,7 +65528,7 @@ uaiw_constexpr Dst t_utf(const Alloc& alloc, const Src& src)
         dst.resize(length * SizeX);
         dst.resize(FnUTF(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{dst.data(), dst.size()}, nullptr));
 #  else
-        dst.resize_and_overwrite(length * SizeX, [&src](Dst::pointer p, std::size_t n) noexcept -> std::size_t {
+        dst.resize_and_overwrite(length * SizeX, [&src](typename Dst::pointer p, std::size_t n) noexcept -> std::size_t {
             return FnUTF(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{p, n}, nullptr);
         });
 #  endif
@@ -65539,7 +65582,7 @@ uaiw_constexpr Dst t_utf(const Alloc& alloc, const Src& src, una::error& error)
         dst.resize(length * SizeX);
         dst.resize(FnUTF(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{dst.data(), dst.size()}, &err));
 #  else
-        dst.resize_and_overwrite(length * SizeX, [&src, &err](Dst::pointer p, std::size_t n) noexcept -> std::size_t {
+        dst.resize_and_overwrite(length * SizeX, [&src, &err](typename Dst::pointer p, std::size_t n) noexcept -> std::size_t {
             return FnUTF(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{p, n}, &err);
         });
 #  endif
@@ -66108,7 +66151,7 @@ public:
         constexpr void set_value(char32_t v) noexcept { value = v; }
         constexpr char32_t get_value() const noexcept { return value; }
     public:
-        constexpr language() noexcept = default;
+        constexpr language() = default;
         template <std::size_t N> // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays, hicpp-avoid-c-arrays)
         constexpr explicit language(const char (&s)[N]) noexcept : value{detail::impl_locate_from_tag(s, N ? N - 1 : 0)} {}
         uaiw_constexpr explicit language(std::string_view s) noexcept : value{detail::impl_locate_from_tag(s, s.size())} {}
@@ -66143,7 +66186,7 @@ public:
         constexpr void set_value(char32_t v) noexcept { value = v; }
         constexpr char32_t get_value() const noexcept { return value; }
     public:
-        constexpr region() noexcept = default;
+        constexpr region() = default;
         template <std::size_t N> // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays, hicpp-avoid-c-arrays)
         constexpr explicit region(const char (&s)[N]) noexcept : value{detail::impl_locate_from_tag(s, N ? N - 1 : 0)} {}
         uaiw_constexpr explicit region(std::string_view s) noexcept : value{detail::impl_locate_from_tag(s, s.size())} {}
@@ -66176,7 +66219,7 @@ public:
         constexpr void set_value(char32_t v) noexcept { value = v; }
         constexpr char32_t get_value() const noexcept { return value; }
     public:
-        constexpr script() noexcept = default;
+        constexpr script() = default;
         template <std::size_t N> // NOLINTNEXTLINE(cppcoreguidelines-avoid-c-arrays, modernize-avoid-c-arrays, hicpp-avoid-c-arrays)
         constexpr explicit script(const char (&s)[N]) noexcept : value{detail::impl_locate_from_tag(s, N ? N - 1 : 0)} {}
         uaiw_constexpr explicit script(std::string_view s) noexcept : value{detail::impl_locate_from_tag(s, s.size())} {}
@@ -66205,7 +66248,7 @@ private:
     region regn; //{detail::impl_locale_region_ZZ};
 
 public:
-    constexpr locale() noexcept = default;
+    constexpr locale() = default;
     // NOLINTNEXTLINE(google-explicit-constructor, hicpp-explicit-conversions)
     constexpr locale(language l) noexcept : lang{l} {}
     constexpr locale(language l, region r) noexcept : lang{l}, regn{r} {}
@@ -66436,7 +66479,7 @@ uaiw_constexpr Dst t_map(const Alloc& alloc, const Src& src, int mode, type_code
         dst.resize(length * SizeX);
         dst.resize(FnMap(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{dst.data(), dst.size()}, mode, loc));
 #  else
-        dst.resize_and_overwrite(length * SizeX, [&src, mode, loc](Dst::pointer p, std::size_t n) noexcept -> std::size_t {
+        dst.resize_and_overwrite(length * SizeX, [&src, mode, loc](typename Dst::pointer p, std::size_t n) noexcept -> std::size_t {
             return FnMap(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{p, n}, mode, loc);
         });
 #  endif
@@ -67688,7 +67731,7 @@ uaiw_constexpr Dst t_norm(const Alloc& alloc, const Src& src)
         dst.resize(length * SizeX);
         dst.resize(FnNorm(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{dst.data(), dst.size()}));
 #  else
-        dst.resize_and_overwrite(length * SizeX, [&src](Dst::pointer p, std::size_t n) noexcept -> std::size_t {
+        dst.resize_and_overwrite(length * SizeX, [&src](typename Dst::pointer p, std::size_t n) noexcept -> std::size_t {
             return FnNorm(safe::in{src.data(), src.size()}, safe::end{src.data() + src.size()}, safe::out{p, n});
         });
 #  endif
@@ -68579,8 +68622,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    reverse<iter_t, iter_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<reverse<iter_t, iter_t>> cached_begin;
 
 public:
     uaiw_constexpr reverse_view() = default;
@@ -68589,11 +68631,11 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
         if constexpr (std::is_same_v<iter_t, sent_t>)
-            cached_begin_value = reverse<iter_t, iter_t>{*this, std::begin(range), std::end(range)};
+            cached_begin.set_value(reverse<iter_t, iter_t>{*this, std::begin(range), std::end(range)});
         else
         {
             // This is to handle case when Range is bidirectional and not std::ranges::common_range
@@ -68602,15 +68644,14 @@ public:
             // auto it = std::ranges::next(std::ranges::begin(range), std::ranges::end(range));
             auto it = std::begin(range);
             for (auto end = std::end(range); it != end; ++it);
-            cached_begin_value = reverse<iter_t, iter_t>{*this, std::begin(range), it};
+            cached_begin.set_value(reverse<iter_t, iter_t>{*this, std::begin(range), it});
 
             // std::string_view{"12345678900"} | una::views::utf8
             // | una::views::reverse | std::views::take(7) | una::views::reverse
             // | una::views::drop(2) | una::views::reverse -> 00987 (48 48 57 56 55)
         }
-        cached_begin = true;
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -68703,8 +68744,7 @@ private:
 
     Range range = Range{};
     Pred func_filter;
-    filter<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<filter<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr filter_view() = default;
@@ -68714,13 +68754,12 @@ public:
     //uaiw_constexpr const Pred& pred() const { return func_filter; }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = filter<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(filter<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -69024,8 +69063,7 @@ private:
 
     Range range = Range{};
     std::size_t count = 0;
-    drop<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<drop<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr drop_view() = default;
@@ -69034,13 +69072,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = drop<iter_t, sent_t>{*this, std::begin(range), std::end(range), count};
-        cached_begin = true;
+        cached_begin.set_value(drop<iter_t, sent_t>{*this, std::begin(range), std::end(range), count});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -69314,8 +69351,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    utf8<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<utf8<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr utf8_view() = default;
@@ -69324,13 +69360,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -69440,8 +69475,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    utf16<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<utf16<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr utf16_view() = default;
@@ -69450,13 +69484,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -69816,8 +69849,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    nfc<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<nfc<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr nfc_view() = default;
@@ -69826,13 +69858,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = nfc<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(nfc<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -69912,8 +69943,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    nfd<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<nfd<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr nfd_view() = default;
@@ -69922,13 +69952,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = nfd<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(nfd<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -70010,8 +70039,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    nfkc<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<nfkc<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr nfkc_view() = default;
@@ -70020,13 +70048,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = nfkc<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(nfkc<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -70106,8 +70133,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    nfkd<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<nfkd<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr nfkd_view() = default;
@@ -70116,13 +70142,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = nfkd<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(nfkd<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -70384,8 +70409,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    utf8<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<utf8<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr utf8_view() = default;
@@ -70394,13 +70418,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -70563,8 +70586,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    utf16<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<utf16<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr utf16_view() = default;
@@ -70573,13 +70595,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -70825,8 +70846,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    utf8<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<utf8<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr utf8_view() = default;
@@ -70835,13 +70855,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -71020,8 +71039,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    utf16<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<utf16<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr utf16_view() = default;
@@ -71030,13 +71048,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -71221,8 +71238,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    utf8<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<utf8<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr utf8_view() = default;
@@ -71231,13 +71247,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(utf8<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
@@ -71419,8 +71434,7 @@ private:
     using sent_t = detail::rng::sentinel_t<Range>;
 
     Range range = Range{};
-    utf16<iter_t, sent_t> cached_begin_value;
-    bool cached_begin = false;
+    detail::rng::cache<utf16<iter_t, sent_t>> cached_begin;
 
 public:
     uaiw_constexpr utf16_view() = default;
@@ -71429,13 +71443,12 @@ public:
     //uaiw_constexpr Range base() && { return std::move(range); }
     uaiw_constexpr auto begin()
     {
-        if (cached_begin)
-            return cached_begin_value;
+        if (cached_begin.has_value())
+            return cached_begin.get_value();
 
-        cached_begin_value = utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)};
-        cached_begin = true;
+        cached_begin.set_value(utf16<iter_t, sent_t>{*this, std::begin(range), std::end(range)});
 
-        return cached_begin_value;
+        return cached_begin.get_value();
     }
     uaiw_constexpr auto end()
     {
